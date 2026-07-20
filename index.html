@@ -10,15 +10,14 @@
 <body>
   <header class="border-bottom">
     <div class="container-fluid header-row">
-      <h1 class="h3 mb-0">Hex Box</h1>
+      <h1 class="h1 mb-0">Hex Box</h1>
       <div class="header-actions">
         <div class="dropdown">
-          <button id="saved-sets-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown">Saved Sets</button>
-          <div class="dropdown-menu dropdown-menu-end saved-items-menu"><div id="saved-sets"></div></div>
-        </div>
-        <div class="dropdown">
-          <button id="saved-palettes-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown">Saved Palettes</button>
-          <div class="dropdown-menu dropdown-menu-end saved-items-menu"><div id="saved-palettes"></div></div>
+          <button id="library-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown" aria-expanded="false">Palette Library</button>
+          <div class="dropdown-menu dropdown-menu-end saved-items-menu">
+            <h2 class="h6 px-2 pt-1">Palette Library</h2>
+            <div id="saved-palettes"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -26,29 +25,23 @@
 
   <main class="container-fluid">
     <div class="app-layout">
-      <aside class="sidebar-column">
+      <aside id="app-sidebar" class="sidebar-column" aria-label="Controls">
         <section class="card controls-card" aria-labelledby="controls-title">
-          <div class="area-heading"><h2 id="controls-title" class="h3">Sidebar</h2></div>
+          <div class="area-heading">
+            <h2 id="controls-title" class="h3">Controls</h2>
+          </div>
           <div class="control-groups">
             <section class="control-group">
-              <div class="control-label"><span>History</span><small>undo / redo</small></div>
-              <div class="btn-group"><button class="btn btn-outline-secondary" data-undo>Undo</button><button class="btn btn-outline-secondary" data-redo>Redo</button></div>
+              <div class="control-label"><span>Hex</span></div>
+              <div class="btn-group"><button class="btn btn-outline-secondary" data-hex-mode="3">#3</button><button class="btn btn-outline-secondary" data-hex-mode="6">#6</button></div>
             </section>
             <section class="control-group">
-              <div class="control-label"><span>Hex</span><small>3-digit / 6-digit</small></div>
-              <div class="btn-group"><button class="btn btn-outline-secondary" data-hex-mode="3">3</button><button class="btn btn-outline-secondary" data-hex-mode="6">6</button></div>
-            </section>
-            <section class="control-group">
-              <div class="control-label"><span>Value</span><small>shade / tint</small></div>
+              <div class="control-label"><span>Value</span></div>
               <div class="btn-group"><button class="btn btn-outline-secondary" data-helper="shade">Shade</button><button class="btn btn-outline-secondary" data-helper="tint">Tint</button></div>
             </section>
             <section class="control-group">
-              <div class="control-label"><span>Chroma</span><small>muted / vivid</small></div>
+              <div class="control-label"><span>Chroma</span></div>
               <div class="btn-group"><button class="btn btn-outline-secondary" data-helper="chroma-down">Mute</button><button class="btn btn-outline-secondary" data-helper="chroma-up">Vivid</button></div>
-            </section>
-            <section class="control-group">
-              <div class="control-label"><span>Temperature</span><small>cooler / warmer</small></div>
-              <div class="btn-group"><button class="btn btn-outline-secondary" data-helper="cooler">Cooler</button><button class="btn btn-outline-secondary" data-helper="warmer">Warmer</button></div>
             </section>
           </div>
         </section>
@@ -57,52 +50,59 @@
       <div class="workspace-grid">
         <section class="card builder-card workspace-card" aria-labelledby="swatch-builder-title">
           <div class="area-heading">
-            <h2 id="swatch-builder-title" class="h3"><span class="step-number">1</span> Set Builder</h2>
+            <h2 id="swatch-builder-title" class="h3">Set</h2>
             <div class="heading-actions">
               <input id="set-name" class="form-control" placeholder="Set name" aria-label="Set name">
-              <button id="save-set" class="btn btn-success" type="button">Save Set</button>
-              <button id="clear-set" class="btn btn-secondary" type="button">Clear Set</button>
+              <button id="save-set" class="btn btn-success" type="button">Save to Palette</button>
+              <button id="clear-set" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
-          <p class="area-help">Build a set. Select a swatch to edit it, or drag one swatch at a time to the tray.</p>
-          <div class="set-toolbar">
-            <span>Set size</span>
-            <div class="btn-group"><button class="btn btn-outline-secondary" data-set-size="3">3</button><button class="btn btn-outline-secondary" data-set-size="5">5</button><button class="btn btn-outline-secondary" data-set-size="7">7</button></div>
+
+          <div class="set-row-section attributes-row">
+            <h3 class="set-row-title">Stats</h3>
+            <div id="set-column-labels" class="set-column-labels" aria-hidden="true"></div>
+            <div id="set-metrics" class="set-metrics" aria-label="Swatch attributes"></div>
           </div>
-          <div id="set-builder" class="set-slots" aria-label="Set swatches"></div>
-          <div id="analysis-dropdown" class="analysis-dropdown" aria-live="polite"></div>
-          <button id="add-to-tray" class="btn btn-primary builder-action" type="button">Add Selected Swatch to Tray</button>
+          <div class="set-row-section preview-row">
+            <h3 class="set-row-title">Preview</h3>
+            <div id="set-arrows-up" class="set-arrow-controls set-arrows-up" aria-label="Increase swatch digits"></div>
+            <div id="set-builder" class="set-slots" aria-label="Set swatches"></div>
+            <div id="set-arrows-down" class="set-arrow-controls set-arrows-down" aria-label="Decrease swatch digits"></div>
+          </div>
+          <div class="set-row-section comparisons-row">
+            <h3 class="set-row-title">Comp</h3>
+            <div id="set-differences" class="set-differences" aria-label="Differences between adjacent swatches" aria-live="polite"></div>
+            <div id="comparison-labels" class="comparison-labels" aria-hidden="true"></div>
+          </div>
         </section>
 
         <section class="card standby-card workspace-card" aria-labelledby="standby-title">
           <div class="area-heading">
-            <h2 id="standby-title" class="h3">Swatch Tray</h2>
+            <h2 id="standby-title" class="h3">Staging</h2>
             <div class="heading-actions">
-              <div class="btn-group"><button class="btn btn-outline-secondary" data-grid-format="square">Square</button><button class="btn btn-outline-secondary" data-grid-format="hexagon">Hexagon</button><button class="btn btn-outline-secondary" data-extrapolate>Extrapolate</button></div>
-              <button id="trash-swatch" class="btn btn-danger" type="button">Drop to Delete</button>
-              <button id="clear-standby" class="btn btn-secondary" type="button">Clear Tray</button>
+              <button id="compress-standby" class="btn btn-primary" type="button">Compress</button>
+              <button id="delete-swatch" class="btn btn-danger" type="button" disabled>Delete</button>
+              <button id="clear-standby" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
-          <p class="area-help">Collect and arrange colors. Select one, then add it to the set.</p>
           <div id="standby-grid" class="swatch-slots" aria-label="Swatch Tray"></div>
-          <button id="add-to-set" class="btn btn-primary tray-action" type="button" disabled>Add Selected to Set</button>
         </section>
 
-        <section class="card palette-builder-card workspace-card" aria-labelledby="palette-builder-title">
+        <section id="palette-drawer" class="card palette-builder-card workspace-card" aria-labelledby="palette-builder-title">
           <div class="area-heading">
-            <h2 id="palette-builder-title" class="h3"><span class="step-number">2</span> Palette Builder</h2>
+            <h2 id="palette-builder-title" class="h3">Palette</h2>
             <div class="heading-actions">
               <input id="palette-name" class="form-control" placeholder="Palette name" aria-label="Palette name">
-              <button id="save-palette" class="btn btn-success" type="button">Save Palette</button>
-              <button id="clear-palette" class="btn btn-secondary" type="button">Clear Palette</button>
+              <button id="save-palette" class="btn btn-success" type="button">Save to Library</button>
+              <button id="clear-palette" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
-          <p class="area-help">Combine saved sets into a palette.</p>
           <div id="palette-builder" class="palette-sets" aria-label="Palette sets"></div>
         </section>
       </div>
     </div>
   </main>
+  <button id="palette-toggle" class="btn btn-primary h3 drawer-toggle palette-toggle" type="button" aria-controls="palette-drawer" aria-expanded="false" aria-label="Open palette staging">‹</button>
 
   <div id="warning-modal" class="modal fade" tabindex="-1" aria-labelledby="warning-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
