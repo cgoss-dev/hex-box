@@ -2,6 +2,8 @@
 
 Hex Box is a browser-based tool for building five-swatch hexadecimal color sets, comparing their value and chroma, staging individual swatches, and assembling sets into reusable palettes.
 
+Use Hex Box at [cgoss-dev.github.io/hex-box](https://cgoss-dev.github.io/hex-box/).
+
 ## Run locally
 
 Hex Box is a static site with no build step.
@@ -9,8 +11,6 @@ Hex Box is a static site with no build step.
 ```bash
 python3 -m http.server 8766
 ```
-
-Open [http://localhost:8766](http://localhost:8766) in a browser.
 
 ## Workflow
 
