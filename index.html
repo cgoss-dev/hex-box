@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hex Box</title>
+  <link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="border-bottom">
+    <div class="container-fluid header-row">
+      <h1 class="mb-0">Hex Box</h1>
+      <div class="header-actions">
+        <div class="dropdown">
+          <button
+            id="saved-menu-button"
+            class="btn btn-secondary"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+            Saved Sets
+          </button>
+          <div class="dropdown-menu dropdown-menu-end saved-items-menu">
+            <div id="saved-sets"></div>
+          </div>
+        </div>
+        <div class="dropdown">
+          <button
+            id="saved-palettes-button"
+            class="btn btn-secondary"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+            Saved Palettes
+          </button>
+          <div class="dropdown-menu dropdown-menu-end saved-items-menu">
+            <div id="saved-palettes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-fluid">
+    <div class="app-layout">
+      <aside class="sidebar-column" aria-label="Set editor and controls">
+        <section class="set-card card" aria-label="Set editor">
+          <div class="area-heading set-heading">
+            <h3>Set</h3>
+            <div class="staging-actions">
+              <input
+                id="set-name"
+                class="form-control"
+                placeholder="Name"
+                aria-label="Set name">
+              <button id="save-set" class="btn btn-secondary" type="button">
+                Save
+              </button>
+              <button id="clear-set" class="btn btn-secondary" type="button">
+                Clear
+              </button>
+            </div>
+          </div>
+          <div class="comparison-toolbar d-none">
+            <span id="comparison-summary"></span>
+            <button id="edit-set" class="btn btn-outline-secondary" type="button">
+              Edit
+            </button>
+          </div>
+          <div id="color-grid" class="card-grid"></div>
+        </section>
+        <section class="controls-card card" aria-label="Set controls">
+          <div class="area-heading">
+            <h3>Controls</h3>
+          </div>
+          <div class="sidebar-settings" aria-label="Editor settings">
+          <div class="sidebar-setting-group">
+            <div>History</div>
+            <small>undo / redo</small>
+            <div class="btn-group" role="group" aria-label="Edit history">
+              <button class="btn btn-outline-secondary" type="button" data-undo>Undo</button>
+              <button class="btn btn-outline-secondary" type="button" data-redo>Redo</button>
+            </div>
+          </div>
+          <div class="sidebar-setting-group display-setting">
+            <div>Display</div>
+            <small>analyze / compare</small>
+            <div class="btn-group" role="group" aria-label="Display options">
+              <button class="btn btn-outline-secondary" type="button" data-analyze-toggle><span>Analyze</span></button>
+              <button class="btn btn-outline-secondary" type="button" data-compare-toggle><span>Compare</span></button>
+            </div>
+            <div id="analysis-dropdown" class="analysis-dropdown d-none" aria-live="polite"></div>
+          </div>
+          <div class="sidebar-setting-group">
+            <div>Hex</div>
+            <small>3-digit / 6-digit</small>
+            <div class="btn-group" role="group" aria-label="Hex precision">
+              <button class="btn btn-outline-secondary" type="button" data-hex-mode="3">3</button>
+              <button class="btn btn-outline-secondary" type="button" data-hex-mode="6">6</button>
+            </div>
+          </div>
+          <div class="sidebar-setting-group">
+            <div>Swatches</div>
+            <small>set size</small>
+            <div class="btn-group" role="group" aria-label="Number of swatches">
+              <button class="btn btn-outline-secondary" type="button" data-swatch-count="3">3</button>
+              <button class="btn btn-outline-secondary" type="button" data-swatch-count="5">5</button>
+              <button class="btn btn-outline-secondary" type="button" data-swatch-count="7">7</button>
+            </div>
+          </div>
+          <div class="sidebar-setting-group">
+            <div>Actions</div>
+            <small>complement / reset</small>
+            <div class="btn-group" role="group" aria-label="Color actions">
+              <button class="btn btn-outline-secondary" type="button" data-complement>Complement</button>
+              <button class="btn btn-outline-secondary" type="button" data-reset>Reset</button>
+            </div>
+          </div>
+          </div>
+          <div class="helper-groups" aria-label="Color helpers">
+          <section class="helper-group">
+            <div>Value</div>
+            <small>shade / tint</small>
+            <div class="btn-group" role="group" aria-label="Value">
+              <button class="btn btn-outline-secondary" type="button" data-helper="shade">Shade</button>
+              <button class="btn btn-outline-secondary" type="button" data-helper="tint">Tint</button>
+            </div>
+          </section>
+          <section class="helper-group">
+            <div>Chroma</div>
+            <small>muted / vivid</small>
+            <div class="btn-group" role="group" aria-label="Chroma">
+              <button class="btn btn-outline-secondary" type="button" data-helper="chroma-down">Mute</button>
+              <button class="btn btn-outline-secondary" type="button" data-helper="chroma-up">Vivid</button>
+            </div>
+          </section>
+          <section class="helper-group">
+            <div>Temperature</div>
+            <small>cooler / warmer</small>
+            <div class="btn-group" role="group" aria-label="Temperature">
+              <button class="btn btn-outline-secondary" type="button" data-helper="cooler">Cooler</button>
+              <button class="btn btn-outline-secondary" type="button" data-helper="warmer">Warmer</button>
+            </div>
+          </section>
+          </div>
+        </section>
+      </aside>
+      <div class="main-column">
+        <section class="central-card card" aria-label="Staging">
+          <div class="area-heading staging-heading">
+            <h3>Staging</h3>
+            <div class="staging-actions">
+              <input
+                id="palette-name"
+                class="form-control"
+                placeholder="Name Palette"
+                aria-label="Palette name">
+              <button id="save-palette" class="btn btn-secondary" type="button">
+                Save Palette
+              </button>
+              <button id="clear-palette" class="btn btn-secondary" type="button">
+                Clear
+              </button>
+            </div>
+          </div>
+          <div id="palette-staging" class="swatch-slots palette-slots" aria-label="Palette staging slots"></div>
+        </section>
+        <section class="standby-card card" aria-label="Standby">
+          <div class="area-heading standby-heading">
+            <h3>Standby</h3>
+            <div class="standby-heading-actions">
+              <div class="btn-group standby-format" role="group" aria-label="Standby slot format">
+                <button class="btn btn-outline-secondary" type="button" data-standby-format="square">Square</button>
+                <button class="btn btn-outline-secondary" type="button" data-standby-format="hexagon">Hexagon</button>
+                <button class="btn btn-outline-secondary" type="button" data-extrapolate>Extrapolate</button>
+              </div>
+              <button
+                class="btn btn-secondary"
+                type="button"
+                data-swatch-trash
+                aria-label="Trash drop zone">
+                Trash
+              </button>
+              <button id="clear-standby" class="btn btn-secondary" type="button">
+                Clear
+              </button>
+            </div>
+          </div>
+          <div id="saved-swatches" class="swatch-slots" aria-label="Saved swatches"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div
+    id="duplicate-warning"
+    class="modal fade"
+    tabindex="-1"
+    aria-labelledby="duplicate-warning-title"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="duplicate-warning-title" class="modal-title">Cannot complete action</h3>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p id="duplicate-warning-message" class="mb-0"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
