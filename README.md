@@ -16,7 +16,7 @@ python3 -m http.server 8766
 
 1. Edit the five colors in **Set**.
 2. Review each swatch's value and chroma in **Stats**.
-3. Review changes between adjacent swatches in **Comp**.
+3. Review the signed change between corresponding hex digits of adjacent swatches in **Comp**.
 4. Enter an optional set name and select **Save to Palette**.
 5. Open the right-side **Palette** drawer with the arrow tab.
 6. Enter an optional palette name and select **Save to Library**.
@@ -29,7 +29,7 @@ python3 -m http.server 8766
 - Select a digit and use the keyboard to edit it directly.
 - **Shade** and **Tint** adjust value.
 - **Mute** and **Vivid** adjust chroma.
-- **Clear** empties all five set slots.
+- **Clear** resets all five set slots to `FFF` and returns to three-digit hex mode.
 
 ### Keyboard shortcuts
 
@@ -58,6 +58,10 @@ Palette uses one full-width set per row and always provides at least three rows.
 
 - Use the arrow tab on the right edge to open or close the drawer.
 - Clicking outside the drawer or pressing Escape closes it.
+- Palette swatches display their hex values.
+- Click a swatch or set title to reveal its × delete control.
+- Double-click a set title to rename it.
+- Drag a palette set into the **Set** card to load and edit its five swatches.
 - Drag populated palette rows to reorder them.
 - **Clear** empties the current palette.
 

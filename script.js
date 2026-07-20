@@ -41,10 +41,13 @@ let savedSets = read(KEYS.sets, []);
 let savedSwatches = read(KEYS.swatches, []);
 let savedPalettes = read(KEYS.palettes, []);
 let editingSetIndex = null;
+let editingPaletteSetIndex = null;
 let editingPaletteIndex = null;
 let undoStack = [];
 let redoStack = [];
 let selectedTrayIndex = null;
+let selectedPaletteIndex = null;
+let selectedPaletteColor = null;
 
 if (!Array.isArray(savedSwatches)) savedSwatches = [];
 savedSets = savedSets.map((set, index) => Array.isArray(set)
@@ -249,12 +252,12 @@ function renderStandby(shouldCompress = false) {
   $("#standby-grid").innerHTML = savedSwatches.map((color, index) => {
     if (!color) return `<div class="swatch-slot" data-standby-slot="${index}" aria-label="Empty standby slot ${index + 1}"></div>`;
     const display = convert(color, hexMode);
-    return `<div class="swatch-slot has-color ${index === selectedTrayIndex ? "is-selected" : ""}" data-standby-slot="${index}" draggable="true" style="background:${cssColor(color)};color:${textColor(color)}">${display}</div>`;
+    return `<div class="swatch-slot has-color ${index === selectedTrayIndex ? "is-selected" : ""}" data-standby-slot="${index}" draggable="true" style="background:${cssColor(color)};color:${textColor(color)}">${display}${index === selectedTrayIndex ? `<button class="slot-delete" type="button" data-delete-standby="${index}" aria-label="Delete swatch ${index + 1}">×</button>` : ""}</div>`;
   }).join("");
   $$("[data-standby-slot]").forEach((slot) => {
     const index = Number(slot.dataset.standbySlot);
     slot.addEventListener("dragstart", (event) => {
-      if (!savedSwatches[index]) return event.preventDefault();
+      if (!savedSwatches[index] || event.target.matches("button")) return event.preventDefault();
       dragData(event, { type: "standby", index, color: savedSwatches[index] });
     });
     slot.addEventListener("dragover", over);
@@ -279,6 +282,13 @@ function renderStandby(shouldCompress = false) {
       renderStandby();
     });
   });
+  $$('[data-delete-standby]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    savedSwatches[Number(button.dataset.deleteStandby)] = null;
+    selectedTrayIndex = null;
+    write(KEYS.swatches, savedSwatches);
+    renderStandby();
+  }));
   $("#delete-swatch").disabled = selectedTrayIndex === null || !savedSwatches[selectedTrayIndex];
 }
 
@@ -375,19 +385,23 @@ function renderSetBuilder() {
   });
 }
 
-function setPreview(set) {
-  return `<div class="mini-set" style="--color-count:${set.colors.length}">${set.colors.map((color) => `<span class="mini-color" style="background:${cssColor(color)}"></span>`).join("")}</div>`;
+function setPreview(set, setIndex = null) {
+  return `<div class="mini-set" style="--color-count:${set.colors.length}">${set.colors.map((color, colorIndex) => {
+    const selectable = setIndex !== null;
+    const selected = selectable && selectedPaletteColor?.setIndex === setIndex && selectedPaletteColor?.colorIndex === colorIndex;
+    return `<span class="mini-color ${selected ? "is-selected" : ""}" ${selectable ? `data-palette-color="${setIndex}-${colorIndex}"` : ""} style="background:${cssColor(color)};color:${textColor(color)}">#${normalize(color)}${selected ? `<button class="slot-delete" type="button" data-delete-palette-color="${setIndex}-${colorIndex}" aria-label="Delete color ${colorIndex + 1}">×</button>` : ""}</span>`;
+  }).join("")}</div>`;
 }
 
 function renderPalette() {
   sizePaletteToCard();
   $("#palette-builder").innerHTML = paletteSlots.map((set, index) => set
-    ? `<div class="palette-set-slot has-set" data-palette-slot="${index}" draggable="true">${setPreview(set)}<span class="palette-set-name">${escapeHtml(set.name)}</span></div>`
+    ? `<div class="palette-set-slot has-set ${index === selectedPaletteIndex ? "is-selected" : ""}" data-palette-slot="${index}" draggable="true">${setPreview(set, index)}<span class="palette-set-name" data-palette-name="${index}">${escapeHtml(set.name)}</span>${index === selectedPaletteIndex ? `<button class="slot-delete" type="button" data-delete-palette-slot="${index}" aria-label="Delete set ${index + 1}">×</button>` : ""}</div>`
     : `<div class="palette-set-slot" data-palette-slot="${index}" aria-label="Empty palette set slot ${index + 1}"></div>`).join("");
   $$("[data-palette-slot]").forEach((slot) => {
     const index = Number(slot.dataset.paletteSlot);
     slot.addEventListener("dragstart", (event) => {
-      if (!paletteSlots[index]) return event.preventDefault();
+      if (!paletteSlots[index] || event.target.matches("button, input")) return event.preventDefault();
       dragData(event, { type: "palette-set", index });
     });
     slot.addEventListener("dragover", over);
@@ -399,6 +413,74 @@ function renderPalette() {
       if (data.type === "saved-set") paletteSlots[index] = structuredClone([...savedSets, ...DEFAULT_SETS][data.index]);
       if (data.type === "palette-set") [paletteSlots[index], paletteSlots[data.index]] = [paletteSlots[data.index], paletteSlots[index]];
       renderPalette();
+    });
+    slot.addEventListener("click", () => {
+      if (!paletteSlots[index]) return;
+      selectedPaletteIndex = index;
+      selectedPaletteColor = null;
+      renderPalette();
+    });
+  });
+  $$('[data-delete-palette-slot]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    paletteSlots[Number(button.dataset.deletePaletteSlot)] = null;
+    selectedPaletteIndex = null;
+    selectedPaletteColor = null;
+    renderPalette();
+  }));
+  $$('[data-palette-color]').forEach((color) => color.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const [setIndex, colorIndex] = color.dataset.paletteColor.split("-").map(Number);
+    selectedPaletteIndex = null;
+    selectedPaletteColor = { setIndex, colorIndex };
+    renderPalette();
+  }));
+  $$('[data-delete-palette-color]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const [setIndex, colorIndex] = button.dataset.deletePaletteColor.split("-").map(Number);
+    paletteSlots[setIndex].colors.splice(colorIndex, 1);
+    if (!paletteSlots[setIndex].colors.length) paletteSlots[setIndex] = null;
+    selectedPaletteColor = null;
+    renderPalette();
+  }));
+  $$('[data-palette-name]').forEach((label) => {
+    let clickTimer;
+    label.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const index = Number(label.dataset.paletteName);
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        selectedPaletteIndex = index;
+        selectedPaletteColor = null;
+        renderPalette();
+      }, 250);
+    });
+    label.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearTimeout(clickTimer);
+    const index = Number(label.dataset.paletteName);
+    const original = paletteSlots[index].name;
+    const input = document.createElement("input");
+    input.className = "palette-set-name palette-set-name-input";
+    input.value = original;
+    input.setAttribute("aria-label", `Rename set ${index + 1}`);
+    input.draggable = false;
+    label.replaceWith(input);
+    input.focus();
+    input.select();
+    let finished = false;
+    const finish = (save) => {
+      if (finished) return;
+      finished = true;
+      if (save) paletteSlots[index].name = input.value.trim() || original;
+      renderPalette();
+    };
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("keydown", (keyEvent) => {
+      if (keyEvent.key === "Enter") { keyEvent.preventDefault(); finish(true); }
+      if (keyEvent.key === "Escape") { keyEvent.preventDefault(); finish(false); }
+    });
     });
   });
 }
@@ -457,12 +539,16 @@ function renderSavedSets() {
 }
 
 function loadSet(set) {
-  setSlots = Array.from({ length: setSize }, (_, index) => set.colors[index] || null);
+  editingPaletteSetIndex = null;
+  hexMode = set.hexMode || normalize(set.colors[0]).length || 3;
+  setSlots = Array.from({ length: setSize }, (_, index) => set.colors[index] ? convert(set.colors[index], hexMode) : null);
   selectedSetIndex = Math.min(Math.floor(setSize / 2), setSize - 1);
   builderColor = convert(setSlots[selectedSetIndex] || "0".repeat(hexMode), hexMode);
   $("#set-name").value = set.name;
   renderSetBuilder();
   renderBuilder();
+  renderStandby();
+  updateControls();
 }
 
 function renderSavedPalettes() {
@@ -490,6 +576,20 @@ function renderSavedPalettes() {
 
 function over(event) { event.preventDefault(); event.currentTarget.classList.add("is-over"); }
 function leave(event) { event.currentTarget.classList.remove("is-over"); }
+
+const setCard = $(".builder-card");
+setCard.addEventListener("dragover", over);
+setCard.addEventListener("dragleave", leave);
+setCard.addEventListener("drop", (event) => {
+  event.preventDefault();
+  leave(event);
+  const data = getDrag(event);
+  if (data?.type !== "palette-set" || !paletteSlots[data.index]) return;
+  loadSet(structuredClone(paletteSlots[data.index]));
+  editingSetIndex = null;
+  editingPaletteSetIndex = data.index;
+  setPaletteOpen(false);
+});
 
 function updateControls() {
   $$("[data-hex-mode]").forEach((button) => button.classList.toggle("active", Number(button.dataset.hexMode) === hexMode));
@@ -537,19 +637,21 @@ function renderAnalysis() {
     (_, index) => `<span>Swatch ${index + 1} vs. ${index + 2}</span>`
   ).join("");
   $("#set-differences").innerHTML = Array.from({ length: setSize - 1 }, (_, index) => {
-    const from = metrics[index];
-    const to = metrics[index + 1];
+    const from = setSlots[index] ? convert(setSlots[index], hexMode) : null;
+    const to = setSlots[index + 1] ? convert(setSlots[index + 1], hexMode) : null;
     if (!from || !to) return `
       <div class="swatch-difference is-empty">
         <span>Complete both swatches to compare.</span>
       </div>`;
-    const valueDelta = Math.round(to.l - from.l);
-    const chromaDelta = Math.round(to.s - from.s);
-    const signed = (value) => `${value > 0 ? "+" : ""}${value}`;
+    const signed = (value) => value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
+    const deltas = from.split("").map((digit, digitIndex) => (
+      DIGITS.indexOf(to[digitIndex]) - DIGITS.indexOf(digit)
+    ));
     return `
       <div class="swatch-difference">
-        <span>Value <b>${signed(valueDelta)}</b></span>
-        <span>Chroma <b>${signed(chromaDelta)}</b></span>
+        <div class="digit-differences" style="--hex-digits:${hexMode}" aria-label="Hex digit changes ${deltas.map(signed).join(", ")}">
+          ${deltas.map((delta) => `<b>${signed(delta)}</b>`).join("")}
+        </div>
       </div>`;
   }).join("");
 }
@@ -598,15 +700,21 @@ document.addEventListener("click", (event) => {
 $("#clear-standby").addEventListener("click", () => { savedSwatches.fill(null); selectedTrayIndex = null; write(KEYS.swatches, savedSwatches); renderStandby(); });
 $("#compress-standby").addEventListener("click", () => renderStandby(true));
 $("#clear-set").addEventListener("click", () => {
-  setSlots = Array(setSize).fill(null);
-  selectedSetIndex = 0;
-  builderColor = "0".repeat(hexMode);
+  hexMode = 3;
+  activeDigit = 0;
+  editing = false;
+  setSlots = Array(setSize).fill("F".repeat(hexMode));
+  selectedSetIndex = Math.floor(setSize / 2);
+  builderColor = "F".repeat(hexMode);
   $("#set-name").value = "";
   editingSetIndex = null;
+  editingPaletteSetIndex = null;
   renderSetBuilder();
   renderBuilder();
+  renderStandby();
+  updateControls();
 });
-$("#clear-palette").addEventListener("click", () => { paletteSlots.fill(null); $("#palette-name").value = ""; editingPaletteIndex = null; renderPalette(); });
+$("#clear-palette").addEventListener("click", () => { paletteSlots.fill(null); selectedPaletteIndex = null; selectedPaletteColor = null; $("#palette-name").value = ""; editingPaletteIndex = null; renderPalette(); });
 
 $("#delete-swatch").addEventListener("click", () => {
   if (selectedTrayIndex === null || !savedSwatches[selectedTrayIndex]) return;
@@ -636,13 +744,15 @@ document.addEventListener("keydown", (event) => {
   else performUndo();
 });
 
-$("#save-set").addEventListener("click", () => {
+$("#save-set").addEventListener("click", (event) => {
+  event.stopPropagation();
   if (setSlots.some((color) => !color)) return alertUser("Fill every Set Builder slot before adding it to the palette.");
-  const emptyIndex = paletteSlots.findIndex((set) => !set);
-  if (emptyIndex < 0) return alertUser("Palette Builder is full.");
+  const targetIndex = editingPaletteSetIndex ?? paletteSlots.findIndex((set) => !set);
+  if (targetIndex < 0) return alertUser("Palette Builder is full.");
   const name = $("#set-name").value.trim() || setSlots.map((color) => `#${convert(color, hexMode)}`).join(" ");
-  paletteSlots[emptyIndex] = { name, colors: setSlots.slice(), hexMode };
+  paletteSlots[targetIndex] = { name, colors: setSlots.slice(), hexMode };
   editingSetIndex = null;
+  editingPaletteSetIndex = null;
   renderPalette();
   setPaletteOpen(true);
 });
