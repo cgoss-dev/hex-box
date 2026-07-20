@@ -46,10 +46,10 @@ Staging provides three rows of square swatch slots. Its column count responds to
 
 - Drag Set swatches into empty Staging slots.
 - Drag Staging swatches into Set slots to move them back into the set.
-- Drag Staging swatches between slots to rearrange them.
+- Drop a Staging swatch before or after another swatch to insert it; surrounding swatches shift to make room.
 - Select a swatch and use **Delete** to remove it.
 - **Compress** packs colors left to right and top to bottom.
-- Resizing recomputes the available cells and automatically compresses the arrangement.
+- Staging adds complete slot rows when its card has room; resizing recomputes the available cells and automatically compresses the arrangement.
 - **Clear** removes every staged swatch.
 
 ## Palette drawer

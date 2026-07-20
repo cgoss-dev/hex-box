@@ -222,8 +222,25 @@ function traySlotLayout() {
   const drawerWidth = Math.min(576, window.innerWidth - 32) - 32;
   const contentWidth = grid.clientWidth || Math.max(columnWidth, drawerWidth);
   const columns = Math.max(1, Math.floor((contentWidth + gap) / (columnWidth + gap)));
-  const rows = 3;
+  const contentHeight = grid.clientHeight || cell * 3 + gap * 2;
+  const rows = Math.max(3, Math.floor((contentHeight + gap) / (cell + gap)));
   return { columns, rows };
+}
+
+function insertSlot(slots, fromIndex, toIndex, value, insertAfter = false) {
+  const next = slots.slice();
+  let insertionIndex = toIndex + (insertAfter ? 1 : 0);
+  if (fromIndex !== null) {
+    next.splice(fromIndex, 1);
+    if (fromIndex < insertionIndex) insertionIndex -= 1;
+  }
+  next.splice(insertionIndex, 0, value);
+  return next;
+}
+
+function isAfterDrop(event, element) {
+  const bounds = element.getBoundingClientRect();
+  return event.clientX >= bounds.left + bounds.width / 2;
 }
 
 function sizeTrayToViewport(shouldCompress = false) {
@@ -267,12 +284,15 @@ function renderStandby(shouldCompress = false) {
       const data = getDrag(event);
       if (!data) return;
       if (data.type === "standby") {
-        [savedSwatches[index], savedSwatches[data.index]] = [savedSwatches[data.index], savedSwatches[index]];
+        savedSwatches = insertSlot(savedSwatches, data.index, index, data.color, isAfterDrop(event, slot));
       } else if (data.type === "builder") {
-        savedSwatches[index] = data.color;
+        savedSwatches = insertSlot(savedSwatches, null, index, data.color, isAfterDrop(event, slot));
       } else if (data.type === "set-color") {
-        savedSwatches[index] = data.color;
+        savedSwatches = insertSlot(savedSwatches, null, index, data.color, isAfterDrop(event, slot));
       }
+      const emptyIndex = savedSwatches.lastIndexOf(null);
+      if (emptyIndex >= 0) savedSwatches.splice(emptyIndex, 1);
+      sizeTrayToViewport();
       write(KEYS.swatches, savedSwatches);
       renderStandby();
     });
@@ -333,16 +353,20 @@ function renderSetBuilder() {
       event.preventDefault(); leave(event);
       const data = getDrag(event);
       if (!data) return;
-      if (data.type === "set-color") [setSlots[index], setSlots[data.index]] = [setSlots[data.index], setSlots[index]];
-      else if (data.type === "standby") {
+      let nextSelectedIndex = index;
+      if (data.type === "set-color") {
+        nextSelectedIndex = index + (isAfterDrop(event, slot) ? 1 : 0);
+        if (data.index < nextSelectedIndex) nextSelectedIndex -= 1;
+        setSlots = insertSlot(setSlots, data.index, index, data.color, isAfterDrop(event, slot));
+      } else if (data.type === "standby") {
         setSlots[index] = data.color;
         savedSwatches[data.index] = null;
         if (selectedTrayIndex === data.index) selectedTrayIndex = null;
         write(KEYS.swatches, savedSwatches);
         renderStandby();
       } else if (data.type === "builder") setSlots[index] = data.color;
-      selectedSetIndex = index;
-      builderColor = convert(setSlots[index] || "0".repeat(hexMode), hexMode);
+      selectedSetIndex = nextSelectedIndex;
+      builderColor = convert(setSlots[nextSelectedIndex] || "0".repeat(hexMode), hexMode);
       renderSetBuilder();
       renderBuilder();
     });

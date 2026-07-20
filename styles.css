@@ -329,8 +329,9 @@ small {
   display: grid;
   grid-template-columns: repeat(auto-fit, var(--cell));
   gap: var(--slot-gap);
-  height: calc(var(--cell) * 3 + var(--slot-gap) * 2);
+  min-height: calc(var(--cell) * 3 + var(--slot-gap) * 2);
   margin-top: .5rem;
+  flex: 1 1 auto;
   align-content: start;
   justify-content: center;
   padding-top: 0;
@@ -526,9 +527,9 @@ small {
   }
 
   .swatch-slots {
-    height: calc(var(--cell) * 3 + var(--slot-gap) * 2);
-    min-height: 0;
-    flex: 0 0 auto;
+    height: auto;
+    min-height: calc(var(--cell) * 3 + var(--slot-gap) * 2);
+    flex: 1 1 auto;
   }
 }
 
