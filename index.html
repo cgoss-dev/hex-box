@@ -13,9 +13,8 @@
       <h1 class="h1 mb-0">Hex Box</h1>
       <div class="header-actions">
         <div class="dropdown">
-          <button id="library-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open palette library">Library</button>
+          <button id="library-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Open palette library">Library</button>
           <div class="dropdown-menu dropdown-menu-end saved-items-menu">
-            <h2 class="h6 px-2 pt-1">Palette Library</h2>
             <div id="saved-palettes"></div>
           </div>
         </div>
@@ -120,6 +119,11 @@
           <label id="name-modal-title" class="h3" for="name-input">Name</label>
           <input id="name-input" class="form-control" required autocomplete="off" aria-required="true">
           <div class="name-modal-actions"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" type="submit">Save</button></div>
+          <div id="name-conflict" class="name-conflict" hidden>
+            <strong id="name-conflict-title"></strong>
+            <span id="name-conflict-message"></span>
+            <div class="name-conflict-actions"><button class="btn btn-primary" type="button" data-name-conflict-action="rename">Rename</button><button class="btn btn-danger" type="button" data-name-conflict-action="replace">Replace</button></div>
+          </div>
         </div>
       </form>
     </div></div>

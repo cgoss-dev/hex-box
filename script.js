@@ -43,19 +43,6 @@ const convert = (color, mode) => mode === 3 ? three(color) : six(color);
 const cssColor = (color) => `#${six(color)}`;
 const escapeHtml = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
-function uniquePaletteName(requestedName, palettes) {
-  const names = new Set(palettes.map((palette) => palette.name.toLowerCase()));
-  if (!names.has(requestedName.toLowerCase())) return requestedName;
-  const baseName = requestedName.replace(/\s+v\d+$/i, "");
-  const versionPrefix = `${baseName} v`.toLowerCase();
-  const latestVersion = [...names].reduce((latest, name) => {
-    if (!name.startsWith(versionPrefix)) return latest;
-    const suffix = name.slice(versionPrefix.length);
-    return /^\d+$/.test(suffix) ? Math.max(latest, Number(suffix)) : latest;
-  }, 0);
-  return `${baseName} v${latestVersion + 1}`;
-}
-
 function syncAriaTooltips(root = document) {
   const elements = [];
   if (root.nodeType === Node.ELEMENT_NODE && root.matches("[aria-label]")) elements.push(root);
@@ -95,6 +82,9 @@ let redoStack = [];
 let selectedTrayIndex = null;
 let selectedPaletteIndex = null;
 let selectedPaletteColor = null;
+let selectedSavedPaletteIndex = null;
+let openPaletteActionsIndex = null;
+let openSavedPaletteActionsIndex = null;
 
 if (!Array.isArray(savedSwatches)) savedSwatches = [];
 savedSets = savedSets.map((set, index) => Array.isArray(set)
@@ -173,18 +163,42 @@ function alertUser(message) {
   bootstrap.Modal.getOrCreateInstance($("#warning-modal")).show();
 }
 
-function requestName(initialValue = "") {
+function requestName(initialValue = "", kind = null, findConflict = null) {
   return new Promise((resolve) => {
     const element = $("#name-modal");
     const modal = bootstrap.Modal.getOrCreateInstance(element);
     const form = $("#name-form");
     const input = $("#name-input");
+    const normalActions = form.querySelector(".name-modal-actions");
+    const conflictBox = $("#name-conflict");
+    const replaceButton = conflictBox.querySelector('[data-name-conflict-action="replace"]');
     input.value = initialValue;
+    conflictBox.hidden = true;
+    normalActions.hidden = false;
+    let pendingConflict = null;
     let settled = false;
+    const updateConflict = () => {
+      const value = input.value.trim();
+      pendingConflict = value ? findConflict?.(value) || null : null;
+      if (!pendingConflict) {
+        conflictBox.hidden = true;
+        normalActions.hidden = false;
+        return null;
+      }
+      $("#name-conflict-title").textContent = `${kind} name already exists`;
+      $("#name-conflict-message").textContent = `A ${kind.toLowerCase()} named “${value}” already exists. Would you like to replace it or rename this one?`;
+      replaceButton.hidden = pendingConflict.canReplace === false;
+      conflictBox.hidden = false;
+      normalActions.hidden = true;
+      return pendingConflict;
+    };
+    const inputChanged = () => updateConflict();
     const finish = (value) => {
       if (settled) return;
       settled = true;
       form.removeEventListener("submit", submit);
+      input.removeEventListener("input", inputChanged);
+      conflictBox.removeEventListener("click", chooseConflictAction);
       element.removeEventListener("hidden.bs.modal", cancel);
       resolve(value);
     };
@@ -192,13 +206,29 @@ function requestName(initialValue = "") {
       event.preventDefault();
       const value = input.value.trim();
       if (!value) return input.reportValidity();
-      finish(value);
+      if (updateConflict()) return;
+      finish({ name: value, replaceIndex: null });
+      modal.hide();
+    };
+    const chooseConflictAction = (event) => {
+      const button = event.target.closest("[data-name-conflict-action]");
+      if (!button) return;
+      if (button.dataset.nameConflictAction === "rename") {
+        conflictBox.hidden = true;
+        normalActions.hidden = true;
+        input.focus();
+        input.select();
+        return;
+      }
+      finish({ name: input.value.trim(), replaceIndex: pendingConflict.index });
       modal.hide();
     };
     const cancel = () => finish(null);
     form.addEventListener("submit", submit);
+    input.addEventListener("input", inputChanged);
+    conflictBox.addEventListener("click", chooseConflictAction);
     element.addEventListener("hidden.bs.modal", cancel, { once: true });
-    element.addEventListener("shown.bs.modal", () => { input.focus(); input.select(); }, { once: true });
+    element.addEventListener("shown.bs.modal", () => { updateConflict(); input.focus(); input.select(); }, { once: true });
     modal.show();
   });
 }
@@ -319,13 +349,21 @@ function isAfterDrop(event, element) {
   return event.clientX >= bounds.left + bounds.width / 2;
 }
 
+function isAfterVerticalDrop(event, element) {
+  const bounds = element.getBoundingClientRect();
+  return event.clientY >= bounds.top + bounds.height / 2;
+}
+
 function sizeTrayToViewport(shouldCompress = false) {
   const { columns, rows: visibleRows, cellWidth, cellHeight, gap } = traySlotLayout();
-  const colors = savedSwatches.filter(Boolean);
-  let renderedRows = 3;
-  while (colors.length >= renderedRows * columns * .75) renderedRows += 1;
-  const renderedCapacity = Math.max(columns * renderedRows, colors.length);
-  savedSwatches = Array.from({ length: renderedCapacity }, (_, index) => colors[index] || null);
+  if (shouldCompress) savedSwatches = savedSwatches.filter(Boolean);
+  const minimumCapacity = columns * 3;
+  const requiredCapacity = Math.max(minimumCapacity, savedSwatches.length);
+  const occupiedSlots = savedSwatches.filter(Boolean).length;
+  let renderedRows = Math.max(3, Math.ceil(requiredCapacity / columns));
+  while (occupiedSlots >= renderedRows * columns * .75) renderedRows += 1;
+  const renderedCapacity = columns * renderedRows;
+  savedSwatches = Array.from({ length: renderedCapacity }, (_, index) => savedSwatches[index] || null);
   const grid = $("#standby-grid");
   grid.style.setProperty("--standby-columns", columns);
   grid.style.setProperty("--standby-cell-width", `${cellWidth}px`);
@@ -344,7 +382,7 @@ function renderStandby(shouldCompress = false) {
   $("#standby-grid").innerHTML = savedSwatches.map((color, index) => {
     if (!color) return `<div class="swatch-slot" data-standby-slot="${index}" aria-label="Empty standby slot ${index + 1}"></div>`;
     const display = convert(color, hexMode);
-    return `<div class="swatch-slot has-color ${index === selectedTrayIndex ? "is-selected" : ""}" data-standby-slot="${index}" draggable="true" style="background:${cssColor(color)};color:${textColor(color)}" aria-label="Standby swatch ${index + 1}, ${display}">${display}${index === selectedTrayIndex ? `<button class="slot-delete" type="button" data-delete-standby="${index}" aria-label="Delete standby swatch ${index + 1}">×</button>` : ""}</div>`;
+    return `<div class="swatch-slot has-color ${index === selectedTrayIndex ? "is-selected" : ""}" data-standby-slot="${index}" draggable="true" style="background:${cssColor(color)};color:${textColor(color)}" aria-label="Standby swatch ${index + 1}, ${display}">${display}<button class="slot-delete" type="button" data-delete-standby="${index}" aria-label="Delete standby swatch ${index + 1}">×</button></div>`;
   }).join("");
   $$("[data-standby-slot]").forEach((slot) => {
     const index = Number(slot.dataset.standbySlot);
@@ -359,15 +397,10 @@ function renderStandby(shouldCompress = false) {
       const data = getDrag(event);
       if (!data) return;
       if (data.type === "standby") {
-        savedSwatches = insertSlot(savedSwatches, data.index, index, data.color, isAfterDrop(event, slot));
-      } else if (data.type === "builder") {
-        savedSwatches = insertSlot(savedSwatches, null, index, data.color, isAfterDrop(event, slot));
-      } else if (data.type === "set-color") {
-        savedSwatches = insertSlot(savedSwatches, null, index, data.color, isAfterDrop(event, slot));
+        [savedSwatches[data.index], savedSwatches[index]] = [savedSwatches[index], savedSwatches[data.index]];
+      } else if (["builder", "set-color", "palette-color"].includes(data.type)) {
+        savedSwatches[index] = data.color;
       }
-      const emptyIndex = savedSwatches.lastIndexOf(null);
-      if (emptyIndex >= 0) savedSwatches.splice(emptyIndex, 1);
-      sizeTrayToViewport();
       write(KEYS.swatches, savedSwatches);
       renderStandby();
     });
@@ -438,7 +471,7 @@ function renderSetBuilder() {
         if (selectedTrayIndex === data.index) selectedTrayIndex = null;
         write(KEYS.swatches, savedSwatches);
         renderStandby();
-      } else if (data.type === "builder") setSlots[index] = data.color;
+      } else if (data.type === "builder" || data.type === "palette-color") setSlots[index] = data.color;
       selectedSetIndex = nextSelectedIndex;
       builderColor = convert(setSlots[nextSelectedIndex] || "0".repeat(hexMode), hexMode);
       renderSetBuilder();
@@ -487,77 +520,49 @@ function setPreview(set, setIndex = null) {
   return `<div class="mini-set" style="--color-count:${set.colors.length}">${set.colors.map((color, colorIndex) => {
     const selectable = setIndex !== null;
     const selected = selectable && selectedPaletteColor?.setIndex === setIndex && selectedPaletteColor?.colorIndex === colorIndex;
-    return `<span class="mini-color ${selected ? "is-selected" : ""}" ${selectable ? `data-palette-color="${setIndex}-${colorIndex}"` : ""} style="background:${cssColor(color)};color:${textColor(color)}">#${normalize(color)}${selected ? `<button class="slot-delete" type="button" data-delete-palette-color="${setIndex}-${colorIndex}" aria-label="Delete swatch ${colorIndex + 1} from scheme ${setIndex + 1}">×</button>` : ""}</span>`;
+    return `<span class="mini-color ${selected ? "is-selected" : ""}" ${selectable ? `data-palette-color="${setIndex}-${colorIndex}" draggable="true"` : ""} style="background:${cssColor(color)};color:${textColor(color)}">#${normalize(color)}${selectable ? `<button class="slot-delete" type="button" data-delete-palette-color="${setIndex}-${colorIndex}" aria-label="Delete swatch ${colorIndex + 1} from scheme ${setIndex + 1}">×</button>` : ""}</span>`;
   }).join("")}</div>`;
 }
 
 function renderPalette() {
   sizePaletteToCard();
   $("#palette-schemes").innerHTML = paletteSlots.map((set, index) => set
-    ? `<div class="palette-set-slot has-set ${index === selectedPaletteIndex ? "is-selected" : ""}" data-palette-slot="${index}" draggable="true">${setPreview(set, index)}<span class="palette-set-name" data-palette-name="${index}">${escapeHtml(set.name)}</span>${index === selectedPaletteIndex ? `<button class="slot-delete" type="button" data-delete-palette-slot="${index}" aria-label="Delete scheme ${index + 1}">×</button>` : ""}</div>`
+    ? `<div class="palette-set-slot has-set ${index === selectedPaletteIndex ? "is-selected" : ""}" data-palette-slot="${index}"><span class="palette-set-name" data-drag-palette-set="${index}" draggable="true">${escapeHtml(set.name)}</span>${setPreview(set, index)}<button class="corner-action" type="button" data-toggle-palette-actions="${index}" aria-label="Edit scheme ${index + 1}" aria-expanded="${index === openPaletteActionsIndex}">+</button>${index === openPaletteActionsIndex ? `<div class="corner-action-menu"><button type="button" data-rename-palette-slot="${index}">Edit name</button><button type="button" data-edit-palette-swatches="${index}">Edit swatches</button><button type="button" data-delete-palette-slot="${index}">Delete</button></div>` : ""}</div>`
     : `<div class="palette-set-slot" data-palette-slot="${index}" aria-label="Empty palette scheme slot ${index + 1}"></div>`).join("");
   $$("[data-palette-slot]").forEach((slot) => {
     const index = Number(slot.dataset.paletteSlot);
-    slot.addEventListener("dragstart", (event) => {
-      if (!paletteSlots[index] || event.target.matches("button, input")) return event.preventDefault();
-      dragData(event, { type: "palette-set", index });
-    });
     slot.addEventListener("dragover", over);
     slot.addEventListener("dragleave", leave);
     slot.addEventListener("drop", (event) => {
       event.preventDefault(); leave(event);
       const data = getDrag(event);
       if (!data) return;
-      if (data.type === "saved-set") paletteSlots[index] = structuredClone([...savedSets, ...DEFAULT_SETS][data.index]);
-      if (data.type === "palette-set") [paletteSlots[index], paletteSlots[data.index]] = [paletteSlots[data.index], paletteSlots[index]];
+      if (data.type === "saved-set") paletteSlots = insertSlot(paletteSlots, null, index, structuredClone([...savedSets, ...DEFAULT_SETS][data.index]), isAfterVerticalDrop(event, slot));
+      if (data.type === "palette-set") paletteSlots = insertSlot(paletteSlots, data.index, index, paletteSlots[data.index], isAfterVerticalDrop(event, slot));
       renderPalette();
     });
     slot.addEventListener("click", () => {
       if (!paletteSlots[index]) return;
       selectedPaletteIndex = index;
       selectedPaletteColor = null;
+      openPaletteActionsIndex = null;
       renderPalette();
     });
   });
-  $$('[data-delete-palette-slot]').forEach((button) => button.addEventListener("click", (event) => {
+  $$('[data-drag-palette-set]').forEach((name) => name.addEventListener("dragstart", (event) => {
     event.stopPropagation();
-    paletteSlots[Number(button.dataset.deletePaletteSlot)] = null;
-    selectedPaletteIndex = null;
-    selectedPaletteColor = null;
+    dragData(event, { type: "palette-set", index: Number(name.dataset.dragPaletteSet) });
+  }));
+  $$('[data-toggle-palette-actions]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const index = Number(button.dataset.togglePaletteActions);
+    openPaletteActionsIndex = openPaletteActionsIndex === index ? null : index;
     renderPalette();
   }));
-  $$('[data-palette-color]').forEach((color) => color.addEventListener("click", (event) => {
+  $$('[data-rename-palette-slot]').forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
-    const [setIndex, colorIndex] = color.dataset.paletteColor.split("-").map(Number);
-    selectedPaletteIndex = null;
-    selectedPaletteColor = { setIndex, colorIndex };
-    renderPalette();
-  }));
-  $$('[data-delete-palette-color]').forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const [setIndex, colorIndex] = button.dataset.deletePaletteColor.split("-").map(Number);
-    paletteSlots[setIndex].colors.splice(colorIndex, 1);
-    if (!paletteSlots[setIndex].colors.length) paletteSlots[setIndex] = null;
-    selectedPaletteColor = null;
-    renderPalette();
-  }));
-  $$('[data-palette-name]').forEach((label) => {
-    let clickTimer;
-    label.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const index = Number(label.dataset.paletteName);
-      clearTimeout(clickTimer);
-      clickTimer = setTimeout(() => {
-        selectedPaletteIndex = index;
-        selectedPaletteColor = null;
-        renderPalette();
-      }, 250);
-    });
-    label.addEventListener("dblclick", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    clearTimeout(clickTimer);
-    const index = Number(label.dataset.paletteName);
+    const index = Number(button.dataset.renamePaletteSlot);
+    const label = document.querySelector(`[data-palette-slot="${index}"] .palette-set-name`);
     const original = paletteSlots[index].name;
     const input = document.createElement("input");
     input.className = "palette-set-name palette-set-name-input";
@@ -565,6 +570,7 @@ function renderPalette() {
     input.setAttribute("aria-label", `Rename scheme ${index + 1}`);
     input.draggable = false;
     label.replaceWith(input);
+    openPaletteActionsIndex = null;
     input.focus();
     input.select();
     let finished = false;
@@ -574,19 +580,77 @@ function renderPalette() {
       if (save) paletteSlots[index].name = input.value.trim() || original;
       renderPalette();
     };
+    input.addEventListener("click", (inputEvent) => inputEvent.stopPropagation());
     input.addEventListener("blur", () => finish(true));
     input.addEventListener("keydown", (keyEvent) => {
       if (keyEvent.key === "Enter") { keyEvent.preventDefault(); finish(true); }
       if (keyEvent.key === "Escape") { keyEvent.preventDefault(); finish(false); }
     });
+  }));
+  $$('[data-edit-palette-swatches]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const index = Number(button.dataset.editPaletteSwatches);
+    loadSet(structuredClone(paletteSlots[index]));
+    editingSetIndex = null;
+    editingPaletteSetIndex = index;
+    openPaletteActionsIndex = null;
+    setPaletteOpen(false);
+  }));
+  $$('[data-delete-palette-slot]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    paletteSlots[Number(button.dataset.deletePaletteSlot)] = null;
+    selectedPaletteIndex = null;
+    selectedPaletteColor = null;
+    openPaletteActionsIndex = null;
+    renderPalette();
+  }));
+  $$('[data-palette-color]').forEach((color) => {
+    color.addEventListener("dragstart", (event) => {
+      event.stopPropagation();
+      const [setIndex, colorIndex] = color.dataset.paletteColor.split("-").map(Number);
+      dragData(event, { type: "palette-color", setIndex, colorIndex, color: paletteSlots[setIndex].colors[colorIndex] });
+    });
+    color.addEventListener("dragover", (event) => { event.stopPropagation(); over(event); });
+    color.addEventListener("dragleave", (event) => { event.stopPropagation(); leave(event); });
+    color.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      leave(event);
+      const data = getDrag(event);
+      if (data?.type !== "palette-color") return;
+      const [setIndex, colorIndex] = color.dataset.paletteColor.split("-").map(Number);
+      if (data.setIndex === setIndex) {
+        paletteSlots[setIndex].colors = insertSlot(paletteSlots[setIndex].colors, data.colorIndex, colorIndex, data.color, isAfterDrop(event, color));
+      } else {
+        paletteSlots[data.setIndex].colors.splice(data.colorIndex, 1);
+        paletteSlots[setIndex].colors = insertSlot(paletteSlots[setIndex].colors, null, colorIndex, data.color, isAfterDrop(event, color));
+        if (!paletteSlots[data.setIndex].colors.length) paletteSlots[data.setIndex] = null;
+      }
+      selectedPaletteColor = null;
+      renderPalette();
+    });
+    color.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const [setIndex, colorIndex] = color.dataset.paletteColor.split("-").map(Number);
+      selectedPaletteIndex = null;
+      selectedPaletteColor = { setIndex, colorIndex };
+      renderPalette();
     });
   });
+  $$('[data-delete-palette-color]').forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const [setIndex, colorIndex] = button.dataset.deletePaletteColor.split("-").map(Number);
+    paletteSlots[setIndex].colors.splice(colorIndex, 1);
+    if (!paletteSlots[setIndex].colors.length) paletteSlots[setIndex] = null;
+    selectedPaletteColor = null;
+    renderPalette();
+  }));
 }
 
 function sizePaletteToCard() {
   const grid = $("#palette-schemes");
-  const gap = 8;
-  const slotHeight = 80;
+  const gap = 4;
+  const slotHeight = 56;
   const height = grid.clientHeight || Math.max(slotHeight * 3 + gap * 2, window.innerHeight * .45);
   const columns = 1;
   const rows = Math.max(3, Math.floor((height + gap) / (slotHeight + gap)));
@@ -654,23 +718,79 @@ function renderSavedPalettes() {
   if (!$("#saved-palettes")) return;
   const all = [STARTER_PALETTE, ...savedPalettes];
   $("#saved-palettes").innerHTML = all.map((palette, index) => `
-    <div class="saved-item">
-      <div class="saved-item-heading"><span>${escapeHtml(palette.name)}</span><span class="btn-group"><button class="btn btn-outline-secondary" data-load-palette="${index}">${palette.permanent ? "Load" : "Edit"}</button>${palette.permanent ? "" : `<button class="btn btn-outline-secondary" data-delete-palette="${index - 1}">Delete</button>`}</span></div>
-      <div>${palette.sets.filter(Boolean).map(setPreview).join("")}</div>
+    <div class="saved-item saved-palette-item ${index === selectedSavedPaletteIndex ? "is-selected" : ""}" data-saved-palette="${index}">
+      <div class="saved-item-heading"><span class="saved-item-name">${escapeHtml(palette.name)}</span></div>
+      <div>${palette.sets.filter(Boolean).map((set) => setPreview(set)).join("")}</div>
+      <button class="corner-action" type="button" data-toggle-saved-palette-actions="${index}" aria-label="${palette.permanent ? "Load" : "Edit"} palette ${escapeHtml(palette.name)}" aria-expanded="${index === openSavedPaletteActionsIndex}">+</button>${index === openSavedPaletteActionsIndex ? `<div class="corner-action-menu"><button type="button" data-rename-saved-palette="${index - 1}">Edit name</button><button type="button" data-load-palette="${index}">Edit swatches</button><button type="button" data-delete-palette="${index - 1}">Delete</button></div>` : ""}
     </div>`).join("");
-  $$("[data-load-palette]").forEach((button) => button.addEventListener("click", () => {
+  $$("[data-saved-palette]").forEach((item) => item.addEventListener("click", () => {
+    selectedSavedPaletteIndex = Number(item.dataset.savedPalette);
+    openSavedPaletteActionsIndex = null;
+    renderSavedPalettes();
+  }));
+  $$("[data-toggle-saved-palette-actions]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const index = Number(button.dataset.toggleSavedPaletteActions);
+    if (all[index].permanent) {
+      const palette = all[index];
+      const lastUsed = palette.sets.reduce((last, set, slot) => set ? slot : last, -1);
+      paletteSlots = Array.from({ length: Math.max(8, lastUsed + 1) }, (_, slot) => palette.sets[slot] ? structuredClone(palette.sets[slot]) : null);
+      paletteName = palette.name;
+      editingPaletteIndex = null;
+      renderPalette();
+      bootstrap.Dropdown.getOrCreateInstance($("#library-button")).hide();
+      return;
+    }
+    openSavedPaletteActionsIndex = openSavedPaletteActionsIndex === index ? null : index;
+    renderSavedPalettes();
+  }));
+  $$("[data-load-palette]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
     const index = Number(button.dataset.loadPalette);
     const palette = all[index];
     const lastUsed = palette.sets.reduce((last, set, slot) => set ? slot : last, -1);
     paletteSlots = Array.from({ length: Math.max(8, lastUsed + 1) }, (_, slot) => palette.sets[slot] ? structuredClone(palette.sets[slot]) : null);
     paletteName = palette.name;
     editingPaletteIndex = palette.permanent ? null : index - 1;
+    openSavedPaletteActionsIndex = null;
     renderPalette();
+    bootstrap.Dropdown.getOrCreateInstance($("#library-button")).hide();
   }));
-  $$("[data-delete-palette]").forEach((button) => button.addEventListener("click", () => {
+  $$("[data-delete-palette]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
     savedPalettes.splice(Number(button.dataset.deletePalette), 1);
+    selectedSavedPaletteIndex = null;
+    openSavedPaletteActionsIndex = null;
     write(KEYS.palettes, savedPalettes);
     renderSavedPalettes();
+  }));
+  $$("[data-rename-saved-palette]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const index = Number(button.dataset.renameSavedPalette);
+    const original = savedPalettes[index].name;
+    const label = document.querySelector(`[data-saved-palette="${index + 1}"] .saved-item-name`);
+    const input = document.createElement("input");
+    input.className = "saved-item-name saved-palette-name-input";
+    input.value = original;
+    input.setAttribute("aria-label", `Rename palette ${original}`);
+    label.replaceWith(input);
+    openSavedPaletteActionsIndex = null;
+    input.focus();
+    input.select();
+    let finished = false;
+    const finish = (save) => {
+      if (finished) return;
+      finished = true;
+      if (save) savedPalettes[index].name = input.value.trim() || original;
+      write(KEYS.palettes, savedPalettes);
+      renderSavedPalettes();
+    };
+    input.addEventListener("click", (inputEvent) => inputEvent.stopPropagation());
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("keydown", (keyEvent) => {
+      if (keyEvent.key === "Enter") { keyEvent.preventDefault(); finish(true); }
+      if (keyEvent.key === "Escape") { keyEvent.preventDefault(); finish(false); }
+    });
   }));
 }
 
@@ -872,11 +992,19 @@ document.addEventListener("keydown", (event) => {
 $("#save-scheme").addEventListener("click", async (event) => {
   event.stopPropagation();
   if (setSlots.some((color) => !color)) return alertUser("Fill every Scheme swatch before adding it to the palette.");
-  const targetIndex = editingPaletteSetIndex ?? paletteSlots.findIndex((set) => !set);
-  if (targetIndex < 0) return alertUser("Palette is full.");
   const suggestedName = schemeName || setSlots.map((color) => `#${convert(color, hexMode)}`).join(" ");
-  const name = await requestName(suggestedName);
-  if (name === null) return;
+  const result = await requestName(suggestedName, "Scheme", (name) => {
+    const index = paletteSlots.findIndex((set, slot) => set && slot !== editingPaletteSetIndex && set.name.toLowerCase() === name.toLowerCase());
+    return index < 0 ? null : { index };
+  });
+  if (result === null) return;
+  const { name } = result;
+  let targetIndex = editingPaletteSetIndex ?? paletteSlots.findIndex((set) => !set);
+  if (result.replaceIndex !== null) {
+    if (editingPaletteSetIndex !== null && editingPaletteSetIndex !== result.replaceIndex) paletteSlots[editingPaletteSetIndex] = null;
+    targetIndex = result.replaceIndex;
+  }
+  if (targetIndex < 0) return alertUser("Palette is full.");
   schemeName = name;
   paletteSlots[targetIndex] = { name, colors: setSlots.slice(), hexMode };
   editingSetIndex = null;
@@ -889,19 +1017,29 @@ $("#save-palette").addEventListener("click", async () => {
   const sets = paletteSlots.filter(Boolean);
   if (!sets.length) return alertUser("Add at least one scheme to Palette.");
   const signature = sets.map((set) => set.colors.map(six).join("|")).join("||");
-  const others = savedPalettes.filter((_, index) => index !== editingPaletteIndex);
-  const comparisonPalettes = [STARTER_PALETTE, ...others];
+  const suggestedName = paletteName || sets.flatMap((set) => set.colors.map((color) => `#${normalize(color)}`)).join(" ");
+  const result = await requestName(suggestedName, "Palette", (name) => {
+    const duplicateIndex = savedPalettes.findIndex((palette, index) => index !== editingPaletteIndex && palette.name.toLowerCase() === name.toLowerCase());
+    const matchesStarter = STARTER_PALETTE.name.toLowerCase() === name.toLowerCase();
+    if (duplicateIndex >= 0) return { index: duplicateIndex };
+    return matchesStarter ? { index: null, canReplace: false } : null;
+  });
+  if (result === null) return;
+  const { name } = result;
+  const targetIndex = result.replaceIndex ?? editingPaletteIndex;
+  const comparisonPalettes = [STARTER_PALETTE, ...savedPalettes.filter((_, index) => index !== targetIndex && index !== editingPaletteIndex)];
   const duplicate = comparisonPalettes.find((palette) => (
     palette.sets.filter(Boolean).map((set) => set.colors.map(six).join("|")).join("||") === signature
   ));
   if (duplicate) return alertUser(`A duplicate is already saved as ${duplicate.name}.`);
-  const suggestedName = paletteName || sets.flatMap((set) => set.colors.map((color) => `#${normalize(color)}`)).join(" ");
-  const requestedName = await requestName(suggestedName);
-  if (requestedName === null) return;
-  const name = uniquePaletteName(requestedName, comparisonPalettes);
   paletteName = name;
   const next = { name, sets: paletteSlots.map((set) => set ? structuredClone(set) : null) };
-  if (editingPaletteIndex === null) savedPalettes.unshift(next); else savedPalettes[editingPaletteIndex] = next;
+  if (targetIndex === null) {
+    savedPalettes.unshift(next);
+  } else {
+    savedPalettes[targetIndex] = next;
+    if (editingPaletteIndex !== null && editingPaletteIndex !== targetIndex) savedPalettes.splice(editingPaletteIndex, 1);
+  }
   editingPaletteIndex = null; write(KEYS.palettes, savedPalettes); renderSavedPalettes(); pulse($("#library-button"));
 });
 
