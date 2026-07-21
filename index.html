@@ -13,7 +13,7 @@
       <h1 class="h1 mb-0">Hex Box</h1>
       <div class="header-actions">
         <div class="dropdown">
-          <button id="library-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown" aria-expanded="false">Palette Library</button>
+          <button id="library-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open palette library">Library</button>
           <div class="dropdown-menu dropdown-menu-end saved-items-menu">
             <h2 class="h6 px-2 pt-1">Palette Library</h2>
             <div id="saved-palettes"></div>
@@ -32,8 +32,8 @@
           </div>
           <div class="control-groups">
             <section class="control-group">
-              <div class="control-label"><span>Hex</span></div>
-              <div class="btn-group"><button class="btn btn-outline-secondary" data-hex-mode="3">#3</button><button class="btn btn-outline-secondary" data-hex-mode="6">#6</button></div>
+              <div class="control-label"><span>Temp</span></div>
+              <div class="btn-group"><button class="btn btn-outline-secondary" data-helper="cooler">Cooler</button><button class="btn btn-outline-secondary" data-helper="warmer">Warmer</button></div>
             </section>
             <section class="control-group">
               <div class="control-label"><span>Value</span></div>
@@ -43,66 +43,87 @@
               <div class="control-label"><span>Chroma</span></div>
               <div class="btn-group"><button class="btn btn-outline-secondary" data-helper="chroma-down">Mute</button><button class="btn btn-outline-secondary" data-helper="chroma-up">Vivid</button></div>
             </section>
+            <section class="control-group">
+              <div class="control-label"><span>Hex</span></div>
+              <div class="btn-group"><button class="btn btn-outline-secondary" data-hex-mode="3">#3</button><button class="btn btn-outline-secondary" data-hex-mode="6">#6</button></div>
+            </section>
+            <section class="control-group">
+              <div class="control-label"><span>Swatches</span></div>
+              <div class="btn-group"><button class="btn btn-outline-secondary" data-set-size="3">3</button><button class="btn btn-outline-secondary" data-set-size="5">5</button></div>
+            </section>
+            <section class="control-group">
+              <div class="control-label"><span>Display</span></div>
+              <div class="btn-group"><button class="btn btn-outline-secondary" data-display-row="stats" aria-label="Toggle Stats row">Stats</button><button class="btn btn-outline-secondary" data-display-row="comp" aria-label="Toggle Comp row">Comp</button></div>
+            </section>
           </div>
         </section>
       </aside>
 
       <div class="workspace-grid">
-        <section class="card builder-card workspace-card" aria-labelledby="swatch-builder-title">
+        <section class="card builder-card workspace-card" aria-labelledby="staging-title">
           <div class="area-heading">
-            <h2 id="swatch-builder-title" class="h3">Set</h2>
+            <h2 id="staging-title" class="h3">Staging</h2>
             <div class="heading-actions">
-              <input id="set-name" class="form-control" placeholder="Set name" aria-label="Set name">
-              <button id="save-set" class="btn btn-success" type="button">Save to Palette</button>
-              <button id="clear-set" class="btn btn-secondary" type="button">Clear</button>
+              <button id="save-scheme" class="btn btn-success" type="button">Save to Palette</button>
+              <button id="clear-scheme" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
 
           <div class="set-row-section attributes-row">
             <h3 class="set-row-title">Stats</h3>
-            <div id="set-column-labels" class="set-column-labels" aria-hidden="true"></div>
-            <div id="set-metrics" class="set-metrics" aria-label="Swatch attributes"></div>
+            <div id="scheme-column-labels" class="set-column-labels" aria-hidden="true"></div>
+            <div id="scheme-metrics" class="set-metrics" aria-label="Scheme swatch attributes"></div>
           </div>
           <div class="set-row-section preview-row">
             <h3 class="set-row-title">Preview</h3>
-            <div id="set-arrows-up" class="set-arrow-controls set-arrows-up" aria-label="Increase swatch digits"></div>
-            <div id="set-builder" class="set-slots" aria-label="Set swatches"></div>
-            <div id="set-arrows-down" class="set-arrow-controls set-arrows-down" aria-label="Decrease swatch digits"></div>
+            <div id="scheme-arrows-up" class="set-arrow-controls set-arrows-up" aria-label="Increase scheme swatch digits"></div>
+            <div id="scheme-swatches" class="set-slots" aria-label="Editable scheme swatches"></div>
+            <div id="scheme-arrows-down" class="set-arrow-controls set-arrows-down" aria-label="Decrease scheme swatch digits"></div>
           </div>
           <div class="set-row-section comparisons-row">
             <h3 class="set-row-title">Comp</h3>
-            <div id="set-differences" class="set-differences" aria-label="Differences between adjacent swatches" aria-live="polite"></div>
+            <div id="scheme-differences" class="set-differences" aria-label="Hex digit differences between adjacent scheme swatches" aria-live="polite"></div>
             <div id="comparison-labels" class="comparison-labels" aria-hidden="true"></div>
           </div>
         </section>
 
         <section class="card standby-card workspace-card" aria-labelledby="standby-title">
           <div class="area-heading">
-            <h2 id="standby-title" class="h3">Staging</h2>
+            <h2 id="standby-title" class="h3">Standby</h2>
             <div class="heading-actions">
               <button id="compress-standby" class="btn btn-primary" type="button">Compress</button>
-              <button id="delete-swatch" class="btn btn-danger" type="button" disabled>Delete</button>
               <button id="clear-standby" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
-          <div id="standby-grid" class="swatch-slots" aria-label="Swatch Tray"></div>
+          <div id="standby-grid" class="swatch-slots standby-slots" aria-label="Standby swatches"></div>
         </section>
 
-        <section id="palette-drawer" class="card palette-builder-card workspace-card" aria-labelledby="palette-builder-title">
+        <section id="palette-drawer" class="card palette-builder-card workspace-card" aria-labelledby="palette-title">
           <div class="area-heading">
-            <h2 id="palette-builder-title" class="h3">Palette</h2>
+            <h2 id="palette-title" class="h3">Palette</h2>
             <div class="heading-actions">
-              <input id="palette-name" class="form-control" placeholder="Palette name" aria-label="Palette name">
               <button id="save-palette" class="btn btn-success" type="button">Save to Library</button>
               <button id="clear-palette" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
-          <div id="palette-builder" class="palette-sets" aria-label="Palette sets"></div>
+          <div id="palette-schemes" class="palette-sets" aria-label="Palette schemes"></div>
         </section>
       </div>
     </div>
   </main>
-  <button id="palette-toggle" class="btn btn-primary h3 drawer-toggle palette-toggle" type="button" aria-controls="palette-drawer" aria-expanded="false" aria-label="Open palette staging">‹</button>
+  <button id="palette-toggle" class="btn btn-primary h3 drawer-toggle palette-toggle" type="button" aria-controls="palette-drawer" aria-expanded="false" aria-label="Open palette">‹</button>
+
+  <div id="name-modal" class="modal fade" tabindex="-1" aria-labelledby="name-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <form id="name-form">
+        <div class="modal-body name-modal-body">
+          <label id="name-modal-title" class="h3" for="name-input">Name</label>
+          <input id="name-input" class="form-control" required autocomplete="off" aria-required="true">
+          <div class="name-modal-actions"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" type="submit">Save</button></div>
+        </div>
+      </form>
+    </div></div>
+  </div>
 
   <div id="warning-modal" class="modal fade" tabindex="-1" aria-labelledby="warning-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">

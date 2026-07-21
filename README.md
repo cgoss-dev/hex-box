@@ -1,6 +1,6 @@
 # Hex Box
 
-Hex Box is a browser-based tool for building five-swatch hexadecimal color sets, comparing their value and chroma, staging individual swatches, and assembling sets into reusable palettes.
+Hex Box is a browser-based tool for building three- or five-swatch hexadecimal color schemes, comparing their value and chroma, staging individual swatches, and assembling schemes into reusable palettes.
 
 Use Hex Box at [cgoss-dev.github.io/hex-box](https://cgoss-dev.github.io/hex-box/).
 
@@ -14,22 +14,25 @@ python3 -m http.server 8766
 
 ## Workflow
 
-1. Edit the five colors in **Set**.
+1. Edit a three- or five-color **Scheme** in **Staging**.
 2. Review each swatch's value and chroma in **Stats**.
 3. Review the signed change between corresponding hex digits of adjacent swatches in **Comp**.
-4. Enter an optional set name and select **Save to Palette**.
-5. Open the right-side **Palette** drawer with the arrow tab.
-6. Enter an optional palette name and select **Save to Library**.
+4. Select **Save to Palette**, then confirm or edit the hex-based name in the **Name** dialog.
+5. Use the inline **Palette** card on larger screens, or open its drawer with the arrow tab on small screens.
+6. Select **Save to Library**, then confirm or edit the hex-based name in the **Name** dialog.
 7. Open **Palette Library** in the header to edit or delete saved palettes.
 
-## Set controls
+## Scheme controls
 
+- Choose **3** or **5** under **Swatches** to set the scheme size.
 - Choose `#3` or `#6` to work with three- or six-digit hex values.
 - Use the arrows above and below each digit to increment or decrement it.
 - Select a digit and use the keyboard to edit it directly.
 - **Shade** and **Tint** adjust value.
 - **Mute** and **Vivid** adjust chroma.
-- **Clear** resets all five set slots to `FFF` and returns to three-digit hex mode.
+- **Cooler** and **Warmer** adjust color temperature.
+- **Display: Stats / Comp** independently shows or hides those Staging rows.
+- **Clear** resets every scheme swatch to `000` and returns to three-digit hex mode.
 
 ### Keyboard shortcuts
 
@@ -40,30 +43,33 @@ python3 -m http.server 8766
 - Ctrl/Cmd+Z: undo.
 - Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y: redo.
 
-## Staging
+## Standby
 
-Staging provides three rows of square swatch slots. Its column count responds to available width.
+Standby holds swatches for later in responsive square slots. Slots scale from 5 × 5rem to 10 × 10rem and reflow from left to right, then top to bottom.
 
-- Drag Set swatches into empty Staging slots.
-- Drag Staging swatches into Set slots to move them back into the set.
-- Drop a Staging swatch before or after another swatch to insert it; surrounding swatches shift to make room.
-- Select a swatch and use **Delete** to remove it.
-- **Compress** packs colors left to right and top to bottom.
-- Staging adds complete slot rows when its card has room; resizing recomputes the available cells and automatically compresses the arrangement.
-- **Clear** removes every staged swatch.
+- Drag Scheme swatches into Standby and drag Standby swatches back into Scheme.
+- Drag within Standby to reorder swatches while preserving their sequence.
+- Select a Standby swatch to reveal its circular × delete control.
+- Standby starts with three rows and adds another only when its existing rows are at least 75% full.
+- Internal scrolling begins only when those occupancy-driven rows exceed the card's visible height.
 
-## Palette drawer
+## Palette
 
-Palette uses one full-width set per row and always provides at least three rows.
+Palette uses one full-width scheme per row and always provides at least three rows.
 
-- Use the arrow tab on the right edge to open or close the drawer.
-- Clicking outside the drawer or pressing Escape closes it.
+- Above 768px, Staging spans the upper-left two columns, Controls and Standby sit beneath it, and Palette spans both rows in the right column. Palette scrolls vertically within its card.
+- At 768px and below, use the arrow tab on the right edge to open or close the drawer.
+- In drawer mode, clicking outside the drawer or pressing Escape closes it.
 - Palette swatches display their hex values.
-- Click a swatch or set title to reveal its × delete control.
-- Double-click a set title to rename it.
-- Drag a palette set into the **Set** card to load and edit its five swatches.
+- Click a swatch or scheme title to reveal its × delete control.
+- Double-click a scheme title to rename it.
+- Drag a palette scheme into the **Scheme** card to load and edit it.
 - Drag populated palette rows to reorder them.
 - **Clear** empties the current palette.
+
+The Library includes a permanent **Starter** palette with 24 named Shade/Base/Tint schemes.
+Saving a palette with an existing name automatically creates the next version, such as `Name v1`, `Name v2`, and so on.
+Palettes whose scheme contents exactly match an existing Library entry are rejected and identify the matching saved palette.
 
 ## Data storage
 
