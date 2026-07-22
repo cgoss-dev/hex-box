@@ -12,6 +12,7 @@
     <div class="container-fluid header-row">
       <h1 class="h1 mb-0">Hex Box</h1>
       <div class="header-actions">
+        <span class="header-workflow">Swatch → Set → Palette →</span>
         <div class="dropdown">
           <button id="library-button" class="btn btn-primary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Open palette library">Library</button>
           <div class="dropdown-menu dropdown-menu-end saved-items-menu">
@@ -27,7 +28,7 @@
       <aside id="app-sidebar" class="sidebar-column" aria-label="Controls">
         <section class="card controls-card" aria-labelledby="controls-title">
           <div class="area-heading">
-            <h2 id="controls-title" class="h3">Controls</h2>
+            <h2 id="controls-title" class="h3">Swatch Controls</h2>
           </div>
           <div class="control-groups">
             <section class="control-group">
@@ -51,8 +52,8 @@
               <div class="btn-group"><button class="btn btn-outline-secondary" data-set-size="3">3</button><button class="btn btn-outline-secondary" data-set-size="5">5</button></div>
             </section>
             <section class="control-group">
-              <div class="control-label"><span>Display</span></div>
-              <div class="btn-group"><button class="btn btn-outline-secondary" data-display-row="stats" aria-label="Toggle Stats row">Stats</button><button class="btn btn-outline-secondary" data-display-row="comp" aria-label="Toggle Comp row">Comp</button></div>
+              <div class="control-label"><span>Stats</span></div>
+              <div class="btn-group"><button class="btn btn-outline-secondary" data-stats-display="steps" aria-label="Toggle Steps in Staging Stats">Steps</button><button class="btn btn-outline-secondary" data-stats-display="temp" aria-label="Toggle Temp in Staging Stats">Temp</button></div>
             </section>
           </div>
         </section>
@@ -61,34 +62,28 @@
       <div class="workspace-grid">
         <section class="card builder-card workspace-card" aria-labelledby="staging-title">
           <div class="area-heading">
-            <h2 id="staging-title" class="h3">Staging</h2>
+            <h2 id="staging-title" class="h3">Set Staging</h2>
             <div class="heading-actions">
-              <button id="save-scheme" class="btn btn-success" type="button">Save to Palette</button>
-              <button id="clear-scheme" class="btn btn-secondary" type="button">Clear</button>
+              <button id="save-set" class="btn btn-success" type="button">Save to Palette</button>
+              <button id="clear-set" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
 
-          <div class="set-row-section attributes-row">
-            <h3 class="set-row-title">Stats</h3>
-            <div id="scheme-column-labels" class="set-column-labels" aria-hidden="true"></div>
-            <div id="scheme-metrics" class="set-metrics" aria-label="Scheme swatch attributes"></div>
-          </div>
           <div class="set-row-section preview-row">
             <h3 class="set-row-title">Preview</h3>
-            <div id="scheme-arrows-up" class="set-arrow-controls set-arrows-up" aria-label="Increase scheme swatch digits"></div>
-            <div id="scheme-swatches" class="set-slots" aria-label="Editable scheme swatches"></div>
-            <div id="scheme-arrows-down" class="set-arrow-controls set-arrows-down" aria-label="Decrease scheme swatch digits"></div>
+            <div id="set-arrows-up" class="set-arrow-controls set-arrows-up" aria-label="Increase set swatch digits"></div>
+            <div id="set-swatches" class="set-slots" aria-label="Editable set swatches"></div>
+            <div id="set-arrows-down" class="set-arrow-controls set-arrows-down" aria-label="Decrease set swatch digits"></div>
           </div>
-          <div class="set-row-section comparisons-row">
-            <h3 class="set-row-title">Comp</h3>
-            <div id="scheme-differences" class="set-differences" aria-label="Hex digit differences between adjacent scheme swatches" aria-live="polite"></div>
-            <div id="comparison-labels" class="comparison-labels" aria-hidden="true"></div>
+          <div class="set-row-section stats-row">
+            <h3 class="set-row-title">Stats</h3>
+            <div id="set-stats-inline" class="set-stats-inline" aria-label="Set temperatures and adjacent hex steps" aria-live="polite"></div>
           </div>
         </section>
 
         <section class="card standby-card workspace-card" aria-labelledby="standby-title">
           <div class="area-heading">
-            <h2 id="standby-title" class="h3">Standby</h2>
+            <h2 id="standby-title" class="h3">Standby Swatches</h2>
             <div class="heading-actions">
               <button id="compress-standby" class="btn btn-primary" type="button">Compress</button>
               <button id="clear-standby" class="btn btn-secondary" type="button">Clear</button>
@@ -99,13 +94,14 @@
 
         <section id="palette-drawer" class="card palette-builder-card workspace-card" aria-labelledby="palette-title">
           <div class="area-heading">
-            <h2 id="palette-title" class="h3">Palette</h2>
+            <h2 id="palette-title" class="h3">Palette Sets</h2>
             <div class="heading-actions">
               <button id="save-palette" class="btn btn-success" type="button">Save to Library</button>
+              <button id="compress-palette" class="btn btn-primary" type="button">Compress</button>
               <button id="clear-palette" class="btn btn-secondary" type="button">Clear</button>
             </div>
           </div>
-          <div id="palette-schemes" class="palette-sets" aria-label="Palette schemes"></div>
+          <div id="palette-sets" class="palette-sets" aria-label="Palette sets"></div>
         </section>
       </div>
     </div>

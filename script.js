@@ -2,7 +2,8 @@ const DIGITS = "0123456789ABCDEF";
 const KEYS = {
   sets: "hex-box-saved-sets",
   swatches: "hex-box-saved-swatches",
-  palettes: "hex-box-saved-palettes"
+  palettes: "hex-box-saved-palettes",
+  starterPalette: "hex-box-starter-palette"
 };
 const DEFAULT_SETS = [
   { name: "Default Gray", colors: ["000", "888", "FFF"], hexMode: 3, permanent: true },
@@ -25,6 +26,14 @@ const STARTER_PALETTE = {
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const cssLengthInPixels = (property) => {
+  const probe = document.createElement("span");
+  probe.style.cssText = `position:absolute;visibility:hidden;width:var(${property});`;
+  document.body.append(probe);
+  const pixels = probe.getBoundingClientRect().width;
+  probe.remove();
+  return pixels;
+};
 const read = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
@@ -70,10 +79,11 @@ let paletteSlots = Array(8).fill(null);
 let savedSets = read(KEYS.sets, []);
 let savedSwatches = read(KEYS.swatches, []);
 let savedPalettes = read(KEYS.palettes, []);
-let schemeName = "";
+let starterPalette = read(KEYS.starterPalette, structuredClone(STARTER_PALETTE));
+let setName = "";
 let paletteName = "";
-let showStats = true;
-let showComp = true;
+let showStatsSteps = true;
+let showStatsTemp = true;
 let editingSetIndex = null;
 let editingPaletteSetIndex = null;
 let editingPaletteIndex = null;
@@ -87,6 +97,8 @@ let openPaletteActionsIndex = null;
 let openSavedPaletteActionsIndex = null;
 
 if (!Array.isArray(savedSwatches)) savedSwatches = [];
+if (!starterPalette || !Array.isArray(starterPalette.sets)) starterPalette = structuredClone(STARTER_PALETTE);
+starterPalette.permanent = true;
 savedSets = savedSets.map((set, index) => Array.isArray(set)
   ? { name: set.map((color) => `#${normalize(color)}`).join(" "), colors: set, hexMode: normalize(set[0]).length || 3 }
   : { name: set.name || `Set ${index + 1}`, colors: set.colors || [], hexMode: set.hexMode || normalize(set.colors?.[0]).length || 3 });
@@ -127,6 +139,12 @@ function rgbToHsl([r, g, b]) {
     else h = 60 * ((r - g) / d + 4);
   }
   return [(h + 360) % 360, s, l];
+}
+
+function temperatureLabel(color) {
+  const [hue, saturation] = rgbToHsl(rgb(color));
+  if (saturation < .1) return "Neutral";
+  return hue < 90 || hue >= 300 ? "Warm" : "Cool";
 }
 
 function hslToRgb([h, s, l]) {
@@ -288,7 +306,7 @@ function exitEdit() {
 }
 
 function renderBuilder() {
-  renderAnalysis();
+  renderStats();
 }
 
 function handleBuilderKeys(event) {
@@ -323,11 +341,13 @@ function handleBuilderKeys(event) {
 
 function traySlotLayout() {
   const grid = $("#standby-grid");
-  const cellWidth = Math.min(160, Math.max(80, window.innerWidth * .06));
-  const cellHeight = cellWidth;
+  const cellWidth = cssLengthInPixels("--shared-swatch-width");
+  const cellHeight = cssLengthInPixels("--shared-swatch-height");
   const gap = 8;
+  const gridStyle = getComputedStyle(grid);
+  const verticalPadding = parseFloat(gridStyle.paddingTop) + parseFloat(gridStyle.paddingBottom);
   const contentWidth = grid.clientWidth || cellWidth;
-  const contentHeight = grid.clientHeight || cellHeight;
+  const contentHeight = Math.max(cellHeight, (grid.clientHeight || cellHeight) - verticalPadding);
   const columns = Math.max(1, Math.floor((contentWidth + gap) / (cellWidth + gap)));
   const rows = Math.max(1, Math.floor((contentHeight + gap) / (cellHeight + gap)));
   return { columns, rows, cellWidth, cellHeight, gap };
@@ -349,25 +369,18 @@ function isAfterDrop(event, element) {
   return event.clientX >= bounds.left + bounds.width / 2;
 }
 
-function isAfterVerticalDrop(event, element) {
-  const bounds = element.getBoundingClientRect();
-  return event.clientY >= bounds.top + bounds.height / 2;
-}
-
 function sizeTrayToViewport(shouldCompress = false) {
   const { columns, rows: visibleRows, cellWidth, cellHeight, gap } = traySlotLayout();
   if (shouldCompress) savedSwatches = savedSwatches.filter(Boolean);
   const minimumCapacity = columns * 3;
-  const requiredCapacity = Math.max(minimumCapacity, savedSwatches.length);
-  const occupiedSlots = savedSwatches.filter(Boolean).length;
-  let renderedRows = Math.max(3, Math.ceil(requiredCapacity / columns));
-  while (occupiedSlots >= renderedRows * columns * .75) renderedRows += 1;
+  let lastOccupiedIndex = -1;
+  savedSwatches.forEach((color, index) => { if (color) lastOccupiedIndex = index; });
+  const requiredCapacity = Math.max(minimumCapacity, lastOccupiedIndex + 1);
+  const renderedRows = Math.max(3, Math.ceil(requiredCapacity / columns));
   const renderedCapacity = columns * renderedRows;
   savedSwatches = Array.from({ length: renderedCapacity }, (_, index) => savedSwatches[index] || null);
   const grid = $("#standby-grid");
   grid.style.setProperty("--standby-columns", columns);
-  grid.style.setProperty("--standby-cell-width", `${cellWidth}px`);
-  grid.style.setProperty("--standby-cell-height", `${cellHeight}px`);
   grid.style.setProperty("--standby-gap", `${gap}px`);
   grid.style.overflowY = renderedRows > visibleRows ? "auto" : "hidden";
   if (shouldCompress) selectedTrayIndex = null;
@@ -384,6 +397,7 @@ function renderStandby(shouldCompress = false) {
     const display = convert(color, hexMode);
     return `<div class="swatch-slot has-color ${index === selectedTrayIndex ? "is-selected" : ""}" data-standby-slot="${index}" draggable="true" style="background:${cssColor(color)};color:${textColor(color)}" aria-label="Standby swatch ${index + 1}, ${display}">${display}<button class="slot-delete" type="button" data-delete-standby="${index}" aria-label="Delete standby swatch ${index + 1}">×</button></div>`;
   }).join("");
+  if ($("#standby-grid").style.overflowY === "hidden") $("#standby-grid").scrollTop = 0;
   $$("[data-standby-slot]").forEach((slot) => {
     const index = Number(slot.dataset.standbySlot);
     slot.addEventListener("dragstart", (event) => {
@@ -429,9 +443,9 @@ window.addEventListener("resize", () => {
 });
 
 function renderSetBuilder() {
-  $("#scheme-swatches").style.setProperty("--set-size", setSize);
-  $("#scheme-swatches").innerHTML = setSlots.map((color, index) => {
-    if (!color) return `<div class="set-slot ${index === selectedSetIndex ? "is-selected" : ""}" data-set-slot="${index}" tabindex="0" aria-label="Empty scheme swatch ${index + 1}"></div>`;
+  $("#set-swatches").style.setProperty("--set-size", setSize);
+  $("#set-swatches").innerHTML = setSlots.map((color, index) => {
+    if (!color) return `<div class="set-slot ${index === selectedSetIndex ? "is-selected" : ""}" data-set-slot="${index}" tabindex="0" aria-label="Empty set swatch ${index + 1}"></div>`;
     const controls = convert(color, hexMode).split("").map((digit, digitIndex) => `
       <span class="digit-control ${editing && index === selectedSetIndex && digitIndex === activeDigit ? "is-active" : ""}">
         <input value="${digit}" readonly draggable="false" data-set-digit="${index}-${digitIndex}" data-set-index="${index}" data-digit-index="${digitIndex}" aria-label="Swatch ${index + 1}, hex digit ${digitIndex + 1}">
@@ -445,9 +459,9 @@ function renderSetBuilder() {
         <button type="button" data-set-step="${index}" data-digit-index="${digitIndex}" data-step="${step}" aria-label="${action} swatch ${index + 1}, digit ${digitIndex + 1}">${symbol}</button>
       </span>`).join("")}</div>`;
   }).join("");
-  ["#scheme-arrows-up", "#scheme-arrows-down"].forEach((selector) => $(selector).style.setProperty("--set-size", setSize));
-  $("#scheme-arrows-up").innerHTML = renderArrowRow(1, "+", "Increase");
-  $("#scheme-arrows-down").innerHTML = renderArrowRow(-1, "−", "Decrease");
+  ["#set-arrows-up", "#set-arrows-down"].forEach((selector) => $(selector).style.setProperty("--set-size", setSize));
+  $("#set-arrows-up").innerHTML = renderArrowRow(1, "+", "Increase");
+  $("#set-arrows-down").innerHTML = renderArrowRow(-1, "−", "Decrease");
   $$("[data-set-slot]").forEach((slot) => {
     const index = Number(slot.dataset.setSlot);
     slot.addEventListener("dragstart", (event) => {
@@ -503,42 +517,70 @@ function renderSetBuilder() {
       activeDigit = Number(input.dataset.digitIndex);
       editing = true;
       input.select();
-      renderAnalysis();
+      renderStats();
     });
     input.addEventListener("focus", () => {
       selectedSetIndex = Number(input.dataset.setIndex);
       builderColor = setSlots[selectedSetIndex];
       activeDigit = Number(input.dataset.digitIndex);
       editing = true;
-      renderAnalysis();
+      renderStats();
     });
     input.addEventListener("keydown", handleBuilderKeys);
   });
 }
 
 function setPreview(set, setIndex = null) {
-  return `<div class="mini-set" style="--color-count:${set.colors.length}">${set.colors.map((color, colorIndex) => {
+  const swatches = `<div class="mini-set" style="--color-count:${set.colors.length}">${set.colors.map((color, colorIndex) => {
     const selectable = setIndex !== null;
     const selected = selectable && selectedPaletteColor?.setIndex === setIndex && selectedPaletteColor?.colorIndex === colorIndex;
-    return `<span class="mini-color ${selected ? "is-selected" : ""}" ${selectable ? `data-palette-color="${setIndex}-${colorIndex}" draggable="true"` : ""} style="background:${cssColor(color)};color:${textColor(color)}">#${normalize(color)}${selectable ? `<button class="slot-delete" type="button" data-delete-palette-color="${setIndex}-${colorIndex}" aria-label="Delete swatch ${colorIndex + 1} from scheme ${setIndex + 1}">×</button>` : ""}</span>`;
+    return `<span class="mini-color ${selected ? "is-selected" : ""}" ${selectable ? `data-palette-color="${setIndex}-${colorIndex}" draggable="true"` : ""} style="background:${cssColor(color)};color:${textColor(color)}">#${normalize(color)}</span>`;
   }).join("")}</div>`;
+  if (setIndex === null) return swatches;
+
+  const mode = set.hexMode || normalize(set.colors[0]).length;
+  const steps = Array.from({ length: set.colors.length - 1 }, (_, index) => {
+    const from = convert(set.colors[index], mode);
+    const to = convert(set.colors[index + 1], mode);
+    return from.split("").map((digit, digitIndex) => DIGITS.indexOf(to[digitIndex]) - DIGITS.indexOf(digit));
+  });
+  const equalSteps = steps.slice(1).every((step) => step.every((value, index) => value === steps[0][index]));
+  const temperatures = set.colors.map((color) => {
+    const label = temperatureLabel(color);
+    return `<div class="palette-set-temperature" aria-label="${label}">${label[0]}</div>`;
+  }).join("");
+  const statusLabel = equalSteps ? "All steps are equal" : "Steps are not all equal";
+  return `${swatches}<div class="palette-set-temperatures" style="--color-count:${set.colors.length}">${temperatures}</div><span class="palette-step-status ${equalSteps ? "is-equal" : "is-unequal"}" role="img" aria-label="${statusLabel}" title="${statusLabel}">${equalSteps ? "=" : "≠"}</span>`;
 }
 
-function renderPalette() {
+function renderPalette(shouldCompress = false) {
+  if (shouldCompress) {
+    paletteSlots = paletteSlots.filter(Boolean);
+    selectedPaletteIndex = null;
+    selectedPaletteColor = null;
+    editingPaletteSetIndex = null;
+    openPaletteActionsIndex = null;
+  }
   sizePaletteToCard();
-  $("#palette-schemes").innerHTML = paletteSlots.map((set, index) => set
-    ? `<div class="palette-set-slot has-set ${index === selectedPaletteIndex ? "is-selected" : ""}" data-palette-slot="${index}"><span class="palette-set-name" data-drag-palette-set="${index}" draggable="true">${escapeHtml(set.name)}</span>${setPreview(set, index)}<button class="corner-action" type="button" data-toggle-palette-actions="${index}" aria-label="Edit scheme ${index + 1}" aria-expanded="${index === openPaletteActionsIndex}">+</button>${index === openPaletteActionsIndex ? `<div class="corner-action-menu"><button type="button" data-rename-palette-slot="${index}">Edit name</button><button type="button" data-edit-palette-swatches="${index}">Edit swatches</button><button type="button" data-delete-palette-slot="${index}">Delete</button></div>` : ""}</div>`
-    : `<div class="palette-set-slot" data-palette-slot="${index}" aria-label="Empty palette scheme slot ${index + 1}"></div>`).join("");
+  $("#palette-sets").innerHTML = paletteSlots.map((set, index) => set
+    ? `<div class="palette-set-slot has-set ${index === selectedPaletteIndex ? "is-selected" : ""} ${index === openPaletteActionsIndex ? "has-open-menu" : ""}" data-palette-slot="${index}" draggable="true" style="--color-count:${set.colors.length}"><span class="palette-set-name">${escapeHtml(set.name)}</span>${setPreview(set, index)}<button class="corner-action" type="button" data-toggle-palette-actions="${index}" aria-label="Edit set ${index + 1}" aria-expanded="${index === openPaletteActionsIndex}">+</button>${index === openPaletteActionsIndex ? `<div class="corner-action-menu"><button type="button" data-rename-palette-slot="${index}">Edit name</button><button type="button" data-edit-palette-swatches="${index}">Edit swatches</button><button type="button" data-delete-palette-slot="${index}">Delete</button></div>` : ""}</div>`
+    : `<div class="palette-set-slot" data-palette-slot="${index}" style="--color-count:${setSize}" aria-label="Empty palette set slot ${index + 1}"></div>`).join("");
   $$("[data-palette-slot]").forEach((slot) => {
     const index = Number(slot.dataset.paletteSlot);
+    slot.addEventListener("dragstart", (event) => {
+      if (!paletteSlots[index] || event.target.closest("button")) return event.preventDefault();
+      dragData(event, { type: "palette-set", index });
+    });
     slot.addEventListener("dragover", over);
     slot.addEventListener("dragleave", leave);
     slot.addEventListener("drop", (event) => {
       event.preventDefault(); leave(event);
       const data = getDrag(event);
       if (!data) return;
-      if (data.type === "saved-set") paletteSlots = insertSlot(paletteSlots, null, index, structuredClone([...savedSets, ...DEFAULT_SETS][data.index]), isAfterVerticalDrop(event, slot));
-      if (data.type === "palette-set") paletteSlots = insertSlot(paletteSlots, data.index, index, paletteSlots[data.index], isAfterVerticalDrop(event, slot));
+      if (data.type === "saved-set") paletteSlots[index] = structuredClone([...savedSets, ...DEFAULT_SETS][data.index]);
+      if (data.type === "palette-set") {
+        [paletteSlots[data.index], paletteSlots[index]] = [paletteSlots[index], paletteSlots[data.index]];
+      }
       renderPalette();
     });
     slot.addEventListener("click", () => {
@@ -549,10 +591,6 @@ function renderPalette() {
       renderPalette();
     });
   });
-  $$('[data-drag-palette-set]').forEach((name) => name.addEventListener("dragstart", (event) => {
-    event.stopPropagation();
-    dragData(event, { type: "palette-set", index: Number(name.dataset.dragPaletteSet) });
-  }));
   $$('[data-toggle-palette-actions]').forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     const index = Number(button.dataset.togglePaletteActions);
@@ -567,7 +605,7 @@ function renderPalette() {
     const input = document.createElement("input");
     input.className = "palette-set-name palette-set-name-input";
     input.value = original;
-    input.setAttribute("aria-label", `Rename scheme ${index + 1}`);
+    input.setAttribute("aria-label", `Rename set ${index + 1}`);
     input.draggable = false;
     label.replaceWith(input);
     openPaletteActionsIndex = null;
@@ -637,22 +675,15 @@ function renderPalette() {
       renderPalette();
     });
   });
-  $$('[data-delete-palette-color]').forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const [setIndex, colorIndex] = button.dataset.deletePaletteColor.split("-").map(Number);
-    paletteSlots[setIndex].colors.splice(colorIndex, 1);
-    if (!paletteSlots[setIndex].colors.length) paletteSlots[setIndex] = null;
-    selectedPaletteColor = null;
-    renderPalette();
-  }));
 }
 
 function sizePaletteToCard() {
-  const grid = $("#palette-schemes");
+  const grid = $("#palette-sets");
   const gap = 4;
-  const slotHeight = 56;
+  const slotHeight = cssLengthInPixels("--palette-card-height");
   const height = grid.clientHeight || Math.max(slotHeight * 3 + gap * 2, window.innerHeight * .45);
-  const columns = 1;
+  const setWidth = cssLengthInPixels("--shared-swatch-width") * setSize;
+  const columns = Math.max(1, Math.floor((grid.clientWidth + gap) / (setWidth + gap)));
   const rows = Math.max(3, Math.floor((height + gap) / (slotHeight + gap)));
   let lastSetIndex = -1;
   paletteSlots.forEach((set, index) => { if (set) lastSetIndex = index; });
@@ -707,7 +738,7 @@ function loadSet(set) {
   setSlots = Array.from({ length: setSize }, (_, index) => set.colors[index] ? convert(set.colors[index], hexMode) : null);
   selectedSetIndex = Math.min(Math.floor(setSize / 2), setSize - 1);
   builderColor = convert(setSlots[selectedSetIndex] || "0".repeat(hexMode), hexMode);
-  schemeName = set.name;
+  setName = set.name;
   renderSetBuilder();
   renderBuilder();
   renderStandby();
@@ -716,12 +747,12 @@ function loadSet(set) {
 
 function renderSavedPalettes() {
   if (!$("#saved-palettes")) return;
-  const all = [STARTER_PALETTE, ...savedPalettes];
+  const all = [starterPalette, ...savedPalettes];
   $("#saved-palettes").innerHTML = all.map((palette, index) => `
     <div class="saved-item saved-palette-item ${index === selectedSavedPaletteIndex ? "is-selected" : ""}" data-saved-palette="${index}">
       <div class="saved-item-heading"><span class="saved-item-name">${escapeHtml(palette.name)}</span></div>
       <div>${palette.sets.filter(Boolean).map((set) => setPreview(set)).join("")}</div>
-      <button class="corner-action" type="button" data-toggle-saved-palette-actions="${index}" aria-label="${palette.permanent ? "Load" : "Edit"} palette ${escapeHtml(palette.name)}" aria-expanded="${index === openSavedPaletteActionsIndex}">+</button>${index === openSavedPaletteActionsIndex ? `<div class="corner-action-menu"><button type="button" data-rename-saved-palette="${index - 1}">Edit name</button><button type="button" data-load-palette="${index}">Edit swatches</button><button type="button" data-delete-palette="${index - 1}">Delete</button></div>` : ""}
+      <button class="corner-action" type="button" data-toggle-saved-palette-actions="${index}" aria-label="Edit palette ${escapeHtml(palette.name)}" aria-expanded="${index === openSavedPaletteActionsIndex}">+</button>${index === openSavedPaletteActionsIndex ? `<div class="corner-action-menu"><button type="button" data-rename-saved-palette="${index}">Edit name</button><button type="button" data-load-palette="${index}">Edit swatches</button>${index === 0 ? "" : `<button type="button" data-delete-palette="${index - 1}">Delete</button>`}</div>` : ""}
     </div>`).join("");
   $$("[data-saved-palette]").forEach((item) => item.addEventListener("click", () => {
     selectedSavedPaletteIndex = Number(item.dataset.savedPalette);
@@ -731,16 +762,6 @@ function renderSavedPalettes() {
   $$("[data-toggle-saved-palette-actions]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     const index = Number(button.dataset.toggleSavedPaletteActions);
-    if (all[index].permanent) {
-      const palette = all[index];
-      const lastUsed = palette.sets.reduce((last, set, slot) => set ? slot : last, -1);
-      paletteSlots = Array.from({ length: Math.max(8, lastUsed + 1) }, (_, slot) => palette.sets[slot] ? structuredClone(palette.sets[slot]) : null);
-      paletteName = palette.name;
-      editingPaletteIndex = null;
-      renderPalette();
-      bootstrap.Dropdown.getOrCreateInstance($("#library-button")).hide();
-      return;
-    }
     openSavedPaletteActionsIndex = openSavedPaletteActionsIndex === index ? null : index;
     renderSavedPalettes();
   }));
@@ -751,7 +772,7 @@ function renderSavedPalettes() {
     const lastUsed = palette.sets.reduce((last, set, slot) => set ? slot : last, -1);
     paletteSlots = Array.from({ length: Math.max(8, lastUsed + 1) }, (_, slot) => palette.sets[slot] ? structuredClone(palette.sets[slot]) : null);
     paletteName = palette.name;
-    editingPaletteIndex = palette.permanent ? null : index - 1;
+    editingPaletteIndex = index === 0 ? -1 : index - 1;
     openSavedPaletteActionsIndex = null;
     renderPalette();
     bootstrap.Dropdown.getOrCreateInstance($("#library-button")).hide();
@@ -766,9 +787,10 @@ function renderSavedPalettes() {
   }));
   $$("[data-rename-saved-palette]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
-    const index = Number(button.dataset.renameSavedPalette);
-    const original = savedPalettes[index].name;
-    const label = document.querySelector(`[data-saved-palette="${index + 1}"] .saved-item-name`);
+    const libraryIndex = Number(button.dataset.renameSavedPalette);
+    const palette = libraryIndex === 0 ? starterPalette : savedPalettes[libraryIndex - 1];
+    const original = palette.name;
+    const label = document.querySelector(`[data-saved-palette="${libraryIndex}"] .saved-item-name`);
     const input = document.createElement("input");
     input.className = "saved-item-name saved-palette-name-input";
     input.value = original;
@@ -781,7 +803,8 @@ function renderSavedPalettes() {
     const finish = (save) => {
       if (finished) return;
       finished = true;
-      if (save) savedPalettes[index].name = input.value.trim() || original;
+      if (save) palette.name = input.value.trim() || original;
+      if (libraryIndex === 0) write(KEYS.starterPalette, starterPalette);
       write(KEYS.palettes, savedPalettes);
       renderSavedPalettes();
     };
@@ -814,18 +837,11 @@ setCard.addEventListener("drop", (event) => {
 function updateControls() {
   $$("[data-hex-mode]").forEach((button) => button.classList.toggle("active", Number(button.dataset.hexMode) === hexMode));
   $$("[data-set-size]").forEach((button) => button.classList.toggle("active", Number(button.dataset.setSize) === setSize));
-  $$("[data-display-row]").forEach((button) => {
-    const visible = button.dataset.displayRow === "stats" ? showStats : showComp;
+  $$("[data-stats-display]").forEach((button) => {
+    const visible = button.dataset.statsDisplay === "steps" ? showStatsSteps : showStatsTemp;
     button.classList.toggle("active", visible);
     button.setAttribute("aria-pressed", String(visible));
   });
-}
-
-function updateDisplayRows() {
-  $(".attributes-row").hidden = !showStats;
-  $(".comparisons-row").hidden = !showComp;
-  updateControls();
-  requestAnimationFrame(() => renderStandby());
 }
 
 function performUndo() {
@@ -842,52 +858,21 @@ function performRedo() {
   updateControls();
 }
 
-function colorMetrics(color) {
-  if (!color) return null;
-  const [, s, l] = rgbToHsl(rgb(color));
-  return { s: s * 100, l: l * 100 };
-}
-
-function renderAnalysis() {
-  const metrics = setSlots.map(colorMetrics);
-  $("#scheme-column-labels").style.setProperty("--set-size", setSize);
-  $("#scheme-column-labels").innerHTML = metrics.map((_, index) => `<span>Swatch ${index + 1}</span>`).join("");
-  $("#scheme-metrics").style.setProperty("--set-size", setSize);
-  $("#scheme-metrics").innerHTML = metrics.map((item, index) => item ? `
-    <div class="swatch-metrics ${index === selectedSetIndex ? "is-selected" : ""}">
-      <span>Value <strong>${Math.round(item.l)}%</strong></span>
-      <span>Chroma <strong>${Math.round(item.s)}%</strong></span>
-    </div>` : `
-    <div class="swatch-metrics is-empty">
-      <span>Value <strong>—</strong></span>
-      <span>Chroma <strong>—</strong></span>
-    </div>`).join("");
-
-  $("#scheme-differences").style.setProperty("--difference-count", Math.max(1, setSize - 1));
-  $("#scheme-differences").style.setProperty("--comparison-width", `${(setSize - 1) / setSize * 100}%`);
-  $("#comparison-labels").style.setProperty("--difference-count", Math.max(1, setSize - 1));
-  $("#comparison-labels").style.setProperty("--comparison-width", `${(setSize - 1) / setSize * 100}%`);
-  $("#comparison-labels").innerHTML = Array.from(
-    { length: setSize - 1 },
-    (_, index) => `<span>${index + 1} vs. ${index + 2}</span>`
-  ).join("");
-  $("#scheme-differences").innerHTML = Array.from({ length: setSize - 1 }, (_, index) => {
+function renderStats() {
+  const signed = (value) => value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
+  $(".stats-row").hidden = !showStatsSteps && !showStatsTemp;
+  $("#set-stats-inline").innerHTML = setSlots.map((color, index) => {
+    const label = color ? temperatureLabel(color) : "Incomplete";
+    const temperature = `<div class="set-temperature-inline" aria-label="${label}">${color ? label[0] : "—"}</div>`;
+    const temperatureCard = showStatsTemp ? temperature : "";
+    if (index === setSize - 1 || !showStatsSteps) return temperatureCard;
     const from = setSlots[index] ? convert(setSlots[index], hexMode) : null;
     const to = setSlots[index + 1] ? convert(setSlots[index + 1], hexMode) : null;
-    if (!from || !to) return `
-      <div class="swatch-difference is-empty">
-        <span>Complete both swatches to compare.</span>
-      </div>`;
-    const signed = (value) => value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
+    if (!from || !to) return `${temperatureCard}<div class="set-step-inline is-empty">Incomplete</div>`;
     const deltas = from.split("").map((digit, digitIndex) => (
       DIGITS.indexOf(to[digitIndex]) - DIGITS.indexOf(digit)
     ));
-    return `
-      <div class="swatch-difference">
-        <div class="digit-differences" style="--hex-digits:${hexMode}" aria-label="Hex digit changes ${deltas.map(signed).join(", ")}">
-          <b>${deltas.map(signed).join(", ")}</b>
-        </div>
-      </div>`;
+    return `${temperatureCard}<div class="set-step-inline" aria-label="Swatches ${index + 1} and ${index + 2}, hex digit steps ${deltas.map(signed).join(", ")}"><b>${deltas.map(signed).join(", ")}</b></div>`;
   }).join("");
 }
 
@@ -934,16 +919,38 @@ document.addEventListener("pointerdown", (event) => {
   }
 });
 
+document.addEventListener("click", (event) => {
+  const paletteSlot = event.target.closest("[data-palette-slot]");
+  const clickedPaletteIndex = paletteSlot ? Number(paletteSlot.dataset.paletteSlot) : null;
+  const keepPaletteSelection = selectedPaletteColor
+    ? Boolean(event.target.closest("[data-palette-color]"))
+    : clickedPaletteIndex === selectedPaletteIndex;
+
+  if ((selectedPaletteIndex !== null || selectedPaletteColor !== null) && !keepPaletteSelection) {
+    selectedPaletteIndex = null;
+    selectedPaletteColor = null;
+    renderPalette();
+  }
+
+  const savedPalette = event.target.closest("[data-saved-palette]");
+  const clickedSavedPaletteIndex = savedPalette ? Number(savedPalette.dataset.savedPalette) : null;
+  if (selectedSavedPaletteIndex !== null && clickedSavedPaletteIndex !== selectedSavedPaletteIndex) {
+    selectedSavedPaletteIndex = null;
+    renderSavedPalettes();
+  }
+});
+
 $("#clear-standby").addEventListener("click", () => { savedSwatches.fill(null); selectedTrayIndex = null; write(KEYS.swatches, savedSwatches); renderStandby(); });
 $("#compress-standby").addEventListener("click", () => renderStandby(true));
-$("#clear-scheme").addEventListener("click", () => {
+$("#compress-palette").addEventListener("click", () => renderPalette(true));
+$("#clear-set").addEventListener("click", () => {
   hexMode = 3;
   activeDigit = 0;
   editing = false;
   setSlots = Array(setSize).fill("0".repeat(hexMode));
   selectedSetIndex = Math.floor(setSize / 2);
   builderColor = "0".repeat(hexMode);
-  schemeName = "";
+  setName = "";
   editingSetIndex = null;
   editingPaletteSetIndex = null;
   renderSetBuilder();
@@ -970,12 +977,14 @@ $$("[data-set-size]").forEach((button) => button.addEventListener("click", () =>
   builderColor = setSlots[selectedSetIndex];
   renderSetBuilder();
   renderBuilder();
+  renderPalette();
   updateControls();
 }));
-$$("[data-display-row]").forEach((button) => button.addEventListener("click", () => {
-  if (button.dataset.displayRow === "stats") showStats = !showStats;
-  else showComp = !showComp;
-  updateDisplayRows();
+$$("[data-stats-display]").forEach((button) => button.addEventListener("click", () => {
+  if (button.dataset.statsDisplay === "steps") showStatsSteps = !showStatsSteps;
+  else showStatsTemp = !showStatsTemp;
+  renderStats();
+  updateControls();
 }));
 $$("[data-helper]").forEach((button) => button.addEventListener("click", () => applyHelper(button.dataset.helper)));
 document.addEventListener("keydown", (event) => {
@@ -989,11 +998,11 @@ document.addEventListener("keydown", (event) => {
   else performUndo();
 });
 
-$("#save-scheme").addEventListener("click", async (event) => {
+$("#save-set").addEventListener("click", async (event) => {
   event.stopPropagation();
-  if (setSlots.some((color) => !color)) return alertUser("Fill every Scheme swatch before adding it to the palette.");
-  const suggestedName = schemeName || setSlots.map((color) => `#${convert(color, hexMode)}`).join(" ");
-  const result = await requestName(suggestedName, "Scheme", (name) => {
+  if (setSlots.some((color) => !color)) return alertUser("Fill every Set swatch before adding it to the palette.");
+  const suggestedName = setName || setSlots.map((color) => `#${convert(color, hexMode)}`).join(" ");
+  const result = await requestName(suggestedName, "Set", (name) => {
     const index = paletteSlots.findIndex((set, slot) => set && slot !== editingPaletteSetIndex && set.name.toLowerCase() === name.toLowerCase());
     return index < 0 ? null : { index };
   });
@@ -1005,7 +1014,7 @@ $("#save-scheme").addEventListener("click", async (event) => {
     targetIndex = result.replaceIndex;
   }
   if (targetIndex < 0) return alertUser("Palette is full.");
-  schemeName = name;
+  setName = name;
   paletteSlots[targetIndex] = { name, colors: setSlots.slice(), hexMode };
   editingSetIndex = null;
   editingPaletteSetIndex = null;
@@ -1015,30 +1024,37 @@ $("#save-scheme").addEventListener("click", async (event) => {
 
 $("#save-palette").addEventListener("click", async () => {
   const sets = paletteSlots.filter(Boolean);
-  if (!sets.length) return alertUser("Add at least one scheme to Palette.");
+  if (!sets.length) return alertUser("Add at least one set to Palette.");
   const signature = sets.map((set) => set.colors.map(six).join("|")).join("||");
   const suggestedName = paletteName || sets.flatMap((set) => set.colors.map((color) => `#${normalize(color)}`)).join(" ");
   const result = await requestName(suggestedName, "Palette", (name) => {
     const duplicateIndex = savedPalettes.findIndex((palette, index) => index !== editingPaletteIndex && palette.name.toLowerCase() === name.toLowerCase());
-    const matchesStarter = STARTER_PALETTE.name.toLowerCase() === name.toLowerCase();
+    const matchesStarter = editingPaletteIndex !== -1 && starterPalette.name.toLowerCase() === name.toLowerCase();
     if (duplicateIndex >= 0) return { index: duplicateIndex };
-    return matchesStarter ? { index: null, canReplace: false } : null;
+    return matchesStarter ? { index: -1 } : null;
   });
   if (result === null) return;
   const { name } = result;
   const targetIndex = result.replaceIndex ?? editingPaletteIndex;
-  const comparisonPalettes = [STARTER_PALETTE, ...savedPalettes.filter((_, index) => index !== targetIndex && index !== editingPaletteIndex)];
-  const duplicate = comparisonPalettes.find((palette) => (
+  const duplicateCandidates = [
+    ...(targetIndex === -1 || editingPaletteIndex === -1 ? [] : [starterPalette]),
+    ...savedPalettes.filter((_, index) => index !== targetIndex && index !== editingPaletteIndex)
+  ];
+  const duplicate = duplicateCandidates.find((palette) => (
     palette.sets.filter(Boolean).map((set) => set.colors.map(six).join("|")).join("||") === signature
   ));
   if (duplicate) return alertUser(`A duplicate is already saved as ${duplicate.name}.`);
   paletteName = name;
   const next = { name, sets: paletteSlots.map((set) => set ? structuredClone(set) : null) };
-  if (targetIndex === null) {
+  if (targetIndex === -1) {
+    starterPalette = { ...next, permanent: true };
+    write(KEYS.starterPalette, starterPalette);
+    if (editingPaletteIndex !== null && editingPaletteIndex !== -1) savedPalettes.splice(editingPaletteIndex, 1);
+  } else if (targetIndex === null) {
     savedPalettes.unshift(next);
   } else {
     savedPalettes[targetIndex] = next;
-    if (editingPaletteIndex !== null && editingPaletteIndex !== targetIndex) savedPalettes.splice(editingPaletteIndex, 1);
+    if (editingPaletteIndex !== null && editingPaletteIndex >= 0 && editingPaletteIndex !== targetIndex) savedPalettes.splice(editingPaletteIndex, 1);
   }
   editingPaletteIndex = null; write(KEYS.palettes, savedPalettes); renderSavedPalettes(); pulse($("#library-button"));
 });
@@ -1049,6 +1065,6 @@ renderSetBuilder();
 renderPalette();
 renderSavedSets();
 renderSavedPalettes();
-updateDisplayRows();
+updateControls();
 syncAriaTooltips();
 ariaTooltipObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-label"] });
